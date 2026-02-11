@@ -22,52 +22,96 @@
     </header>
 
     <section class="card">
-      <h2>Upload Illustration</h2>
-      <div class="upload-status-grid">
-        <div class="option-status" id="status0">
-          <div class="status-header">Option 1</div>
-          <div class="status-content" id="statusContent0">Empty</div>
+      <h2>Upload Illustrations</h2>
+
+      <!-- Option 1 -->
+      <div class="option-upload-section">
+        <h3>Option 1</h3>
+        <div class="grid">
+          <label>
+            Carrier
+            <select id="carrierSelect0">
+              <option value="">Select carrier</option>
+              <option value="lafayette">Lafayette Life</option>
+              <option value="massmutual">MassMutual</option>
+            </select>
+          </label>
+          <label>
+            Client-facing name
+            <input id="reportName0" type="text" placeholder="e.g., Don Johnson - LLIC New Option" />
+          </label>
+          <label>
+            Upload PDF illustration
+            <input id="pdfInput0" type="file" accept="application/pdf" />
+          </label>
         </div>
-        <div class="option-status" id="status1">
-          <div class="status-header">Option 2</div>
-          <div class="status-content" id="statusContent1">Empty</div>
-        </div>
-        <div class="option-status" id="status2">
-          <div class="status-header">Option 3</div>
-          <div class="status-content" id="statusContent2">Empty</div>
+        <div class="actions">
+          <button id="parsePdf0" class="parse-btn">Parse Option 1</button>
+          <button id="clearPdf0" class="clear-btn">Clear</button>
+          <span id="status0" class="upload-status">Empty</span>
         </div>
       </div>
+
       <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;" />
-      <h3>Upload Individual PDF</h3>
-      <div class="grid">
-        <label>
-          Carrier
-          <select id="carrierSelect">
-            <option value="">Select carrier</option>
-            <option value="lafayette">Lafayette Life</option>
-            <option value="massmutual">MassMutual</option>
-          </select>
-        </label>
-        <label>
-          Assign to option
-          <select id="optionSelect">
-            <option value="0">Option 1</option>
-            <option value="1">Option 2</option>
-            <option value="2">Option 3</option>
-          </select>
-        </label>
-        <label>
-          Client-facing name
-          <input id="reportName" type="text" placeholder="e.g., Don Johnson - New Option" />
-        </label>
-        <label>
-          Upload PDF illustration
-          <input id="pdfInput" type="file" accept="application/pdf" />
-        </label>
+
+      <!-- Option 2 -->
+      <div class="option-upload-section">
+        <h3>Option 2</h3>
+        <div class="grid">
+          <label>
+            Carrier
+            <select id="carrierSelect1">
+              <option value="">Select carrier</option>
+              <option value="lafayette">Lafayette Life</option>
+              <option value="massmutual">MassMutual</option>
+            </select>
+          </label>
+          <label>
+            Client-facing name
+            <input id="reportName1" type="text" placeholder="e.g., Don Johnson - MM New Option" />
+          </label>
+          <label>
+            Upload PDF illustration
+            <input id="pdfInput1" type="file" accept="application/pdf" />
+          </label>
+        </div>
+        <div class="actions">
+          <button id="parsePdf1" class="parse-btn">Parse Option 2</button>
+          <button id="clearPdf1" class="clear-btn">Clear</button>
+          <span id="status1" class="upload-status">Empty</span>
+        </div>
       </div>
-      <div class="actions">
-        <button id="parsePdf">Parse PDF</button>
+
+      <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+      <!-- Option 3 -->
+      <div class="option-upload-section">
+        <h3>Option 3</h3>
+        <div class="grid">
+          <label>
+            Carrier
+            <select id="carrierSelect2">
+              <option value="">Select carrier</option>
+              <option value="lafayette">Lafayette Life</option>
+              <option value="massmutual">MassMutual</option>
+            </select>
+          </label>
+          <label>
+            Client-facing name
+            <input id="reportName2" type="text" placeholder="e.g., Don Johnson - MM Conversion" />
+          </label>
+          <label>
+            Upload PDF illustration
+            <input id="pdfInput2" type="file" accept="application/pdf" />
+          </label>
+        </div>
+        <div class="actions">
+          <button id="parsePdf2" class="parse-btn">Parse Option 3</button>
+          <button id="clearPdf2" class="clear-btn">Clear</button>
+          <span id="status2" class="upload-status">Empty</span>
+        </div>
       </div>
+
       <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;" />
       <h3>Or Upload CSV (All 3 Options)</h3>
       <div class="grid">
@@ -80,11 +124,19 @@
         <button id="parseCsv">Parse CSV (Loads All 3 Options)</button>
       </div>
       <details class="advanced">
+        <summary>Debug Mode</summary>
+        <label style="margin-top: 12px;">
+          <input type="checkbox" id="debugMode" style="width: auto; margin-right: 8px;" />
+          Enable debug mode (shows raw parsing data in console)
+        </label>
+      </details>
+
+      <details class="advanced">
         <summary>Advanced page ranges</summary>
         <div class="grid">
           <label>
             Lafayette table start page
-            <input id="lafayetteStart" type="number" value="11" min="1" />
+            <input id="lafayetteStart" type="number" value="10" min="1" />
           </label>
           <label>
             Lafayette table end page
@@ -109,7 +161,6 @@
         </div>
         <p class="hint">Use the page number shown in your PDF viewer.</p>
       </details>
-      <div id="uploadStatus" class="status"></div>
     </section>
 
     <section class="card">
@@ -143,8 +194,7 @@
       <div class="toggle-row">
         <label><input type="checkbox" id="toggleCashIncrease" checked /> Cash value increase</label>
         <label><input type="checkbox" id="toggleEfficiency" checked /> Cash value efficiency</label>
-        <label><input type="checkbox" id="toggleCashOverCash" checked /> Cash over cash return</label>
-        <label class="disabled"><input type="checkbox" id="toggleIrr" disabled /> Internal IRR (phase 2)</label>
+        <label><input type="checkbox" id="toggleIrr" checked /> Internal rate of return (IRR)</label>
       </div>
     </section>
 
@@ -155,8 +205,22 @@
       </div>
       <div id="comparisonTable"></div>
       <div class="chart-area">
-        <h2>Line Chart</h2>
-        <canvas id="comparisonChart"></canvas>
+        <div class="chart-header">
+          <h2>Comparison Chart</h2>
+          <div class="chart-toggles">
+            <label class="chart-toggle-option">
+              <input type="radio" name="chartMetric" value="cashValue" checked />
+              Cash Value
+            </label>
+            <label class="chart-toggle-option">
+              <input type="radio" name="chartMetric" value="deathBenefit" />
+              Death Benefit
+            </label>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="comparisonChart"></canvas>
+        </div>
       </div>
     </section>
 

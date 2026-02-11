@@ -8,14 +8,31 @@ const state = {
   lastImportedOption: null,
   chart: null,
   sourcePdfs: {},
+  debug: false,
 };
 
-const carrierSelect = document.getElementById("carrierSelect");
-const optionSelect = document.getElementById("optionSelect");
-const reportNameInput = document.getElementById("reportName");
-const pdfInput = document.getElementById("pdfInput");
+function debugLog(...args) {
+  if (state.debug) {
+    console.log('[DEBUG]', ...args);
+  }
+}
+
+const carrierSelects = [
+  document.getElementById("carrierSelect0"),
+  document.getElementById("carrierSelect1"),
+  document.getElementById("carrierSelect2"),
+];
+const reportNameInputs = [
+  document.getElementById("reportName0"),
+  document.getElementById("reportName1"),
+  document.getElementById("reportName2"),
+];
+const pdfInputs = [
+  document.getElementById("pdfInput0"),
+  document.getElementById("pdfInput1"),
+  document.getElementById("pdfInput2"),
+];
 const csvInput = document.getElementById("csvInput");
-const uploadStatus = document.getElementById("uploadStatus");
 
 const lafayetteStart = document.getElementById("lafayetteStart");
 const lafayetteEnd = document.getElementById("lafayetteEnd");
@@ -38,19 +55,44 @@ const loadComparison = document.getElementById("loadComparison");
 
 const toggleCashIncrease = document.getElementById("toggleCashIncrease");
 const toggleEfficiency = document.getElementById("toggleEfficiency");
-const toggleCashOverCash = document.getElementById("toggleCashOverCash");
+const toggleIrr = document.getElementById("toggleIrr");
+const debugMode = document.getElementById("debugMode");
+const chartMetricRadios = document.querySelectorAll('input[name="chartMetric"]');
 
-pdfInput.addEventListener("change", () => {
-  if (!reportNameInput.value && pdfInput.files[0]) {
-    reportNameInput.value = pdfInput.files[0].name.replace(/\.pdf$/i, "");
+debugMode.addEventListener("change", () => {
+  state.debug = debugMode.checked;
+  if (state.debug) {
+    console.log('%c🔍 Debug Mode Enabled', 'color: #1fc9e5; font-size: 16px; font-weight: bold;');
   }
 });
 
-document.getElementById("parsePdf").addEventListener("click", handlePdfParse);
+// Auto-fill report names when PDFs are selected
+pdfInputs.forEach((input, index) => {
+  input.addEventListener("change", () => {
+    if (!reportNameInputs[index].value && input.files[0]) {
+      reportNameInputs[index].value = input.files[0].name.replace(/\.pdf$/i, "");
+    }
+  });
+});
+
+// Setup parse buttons for each option
+document.getElementById("parsePdf0").addEventListener("click", () => handlePdfParse(0));
+document.getElementById("parsePdf1").addEventListener("click", () => handlePdfParse(1));
+document.getElementById("parsePdf2").addEventListener("click", () => handlePdfParse(2));
+
+// Setup clear buttons for each option
+document.getElementById("clearPdf0").addEventListener("click", () => handleClearOption(0));
+document.getElementById("clearPdf1").addEventListener("click", () => handleClearOption(1));
+document.getElementById("clearPdf2").addEventListener("click", () => handleClearOption(2));
+
 document.getElementById("parseCsv").addEventListener("click", handleCsvParse);
 toggleCashIncrease.addEventListener("change", renderAll);
 toggleEfficiency.addEventListener("change", renderAll);
-toggleCashOverCash.addEventListener("change", renderAll);
+toggleIrr.addEventListener("change", renderAll);
+
+chartMetricRadios.forEach(radio => {
+  radio.addEventListener("change", renderChart);
+});
 resetOverrides.addEventListener("click", () => {
   state.overrides = {};
   renderAll();
@@ -63,10 +105,18 @@ function setStatus(message) {
   uploadStatus.textContent = message;
 }
 
-function formatNumber(value) {
+function formatNumber(value, asPercentage = false, percentageDecimals = 0) {
   if (value === null || value === undefined || value === "") return "—";
   const number = Number(value);
   if (Number.isNaN(number)) return value;
+
+  if (asPercentage) {
+    return (number * 100).toLocaleString("en-US", {
+      minimumFractionDigits: percentageDecimals,
+      maximumFractionDigits: percentageDecimals,
+    }) + "%";
+  }
+
   return number.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
@@ -98,19 +148,22 @@ function setOverride(optionIndex, year, field, value) {
   state.overrides[key] = value;
 }
 
-async function handlePdfParse() {
+async function handlePdfParse(optionIndex) {
+  const pdfInput = pdfInputs[optionIndex];
+  const carrierSelect = carrierSelects[optionIndex];
+  const reportNameInput = reportNameInputs[optionIndex];
+
   if (!pdfInput.files[0]) {
-    setStatus("Please select a PDF illustration.");
+    updateOptionStatus(optionIndex, "Please select a PDF illustration.", "error");
     return;
   }
   const carrier = carrierSelect.value;
   if (!carrier) {
-    setStatus("Select a carrier before parsing the PDF.");
+    updateOptionStatus(optionIndex, "Select a carrier before parsing.", "error");
     return;
   }
-  const optionIndex = Number(optionSelect.value);
   const name = reportNameInput.value || pdfInput.files[0].name;
-  setStatus("Parsing PDF...");
+  updateOptionStatus(optionIndex, "Parsing PDF...", "loading");
 
   const arrayBuffer = await pdfInput.files[0].arrayBuffer();
   const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -121,12 +174,12 @@ async function handlePdfParse() {
     const rows = await parseLafayette(pdfDoc);
     const summary = await extractLafayetteSummary(pdfDoc, rows);
     setOption(optionIndex, name, carrier, rows, summary, pdfInput.files[0].name);
-    setStatus("Lafayette Life PDF parsed.");
+    updateOptionStatus(optionIndex, `✓ ${name}`, "success");
   } else if (carrier === "massmutual") {
     const rows = await parseMassMutual(pdfDoc);
     const summary = await extractMassMutualSummary(pdfDoc, rows);
     setOption(optionIndex, name, carrier, rows, summary, pdfInput.files[0].name);
-    setStatus("MassMutual PDF parsed.");
+    updateOptionStatus(optionIndex, `✓ ${name}`, "success");
   }
 }
 
@@ -200,26 +253,49 @@ function setOption(index, name, carrier, rows, summary, filename) {
   };
   state.lastImportedOption = index;
   updateSummary(summary);
-  updateOptionStatusDisplay();
   renderAll();
-
-  // Reset form for next upload
-  pdfInput.value = "";
-  reportNameInput.value = "";
 }
 
-function updateOptionStatusDisplay() {
-  for (let i = 0; i < 3; i++) {
-    const statusDiv = document.getElementById(`status${i}`);
-    const contentDiv = document.getElementById(`statusContent${i}`);
-    if (state.options[i]) {
-      statusDiv.classList.add("loaded");
-      contentDiv.textContent = `✓ ${state.options[i].name}`;
-    } else {
-      statusDiv.classList.remove("loaded");
-      contentDiv.textContent = "Empty";
-    }
+function updateOptionStatus(optionIndex, message, type = "info") {
+  const statusSpan = document.getElementById(`status${optionIndex}`);
+  statusSpan.textContent = message;
+  statusSpan.className = "upload-status";
+  if (type === "success") {
+    statusSpan.classList.add("success");
+  } else if (type === "error") {
+    statusSpan.classList.add("error");
+  } else if (type === "loading") {
+    statusSpan.classList.add("loading");
   }
+}
+
+function handleClearOption(optionIndex) {
+  // Clear state
+  state.options[optionIndex] = null;
+  delete state.sourcePdfs[optionIndex];
+
+  // Clear overrides for this option
+  Object.keys(state.overrides).forEach(key => {
+    if (key.startsWith(`${optionIndex}:`)) {
+      delete state.overrides[key];
+    }
+  });
+
+  // Clear form inputs
+  carrierSelects[optionIndex].value = "";
+  reportNameInputs[optionIndex].value = "";
+  pdfInputs[optionIndex].value = "";
+
+  // Update status
+  updateOptionStatus(optionIndex, "Empty", "info");
+
+  // Clear summary if this was the last imported option
+  if (state.lastImportedOption === optionIndex) {
+    updateSummary({});
+  }
+
+  // Re-render
+  renderAll();
 }
 
 function applyCumulativeOutlay(rows) {
@@ -243,6 +319,7 @@ function updateSummary(summary) {
 }
 
 async function extractLinesFromPage(pdfDoc, pageNumber) {
+  debugLog(`Extracting page ${pageNumber}...`);
   const page = await pdfDoc.getPage(pageNumber);
   const content = await page.getTextContent();
   const items = content.items.map((item) => ({
@@ -250,6 +327,8 @@ async function extractLinesFromPage(pdfDoc, pageNumber) {
     x: item.transform[4],
     y: item.transform[5],
   }));
+
+  debugLog(`Page ${pageNumber}: Found ${items.length} text items`);
 
   const rows = {};
   items.forEach((item) => {
@@ -259,12 +338,20 @@ async function extractLinesFromPage(pdfDoc, pageNumber) {
     rows[key].push(item);
   });
 
-  return Object.keys(rows)
+  const lines = Object.keys(rows)
     .sort((a, b) => Number(b) - Number(a))
     .map((key) => {
       const lineItems = rows[key].sort((a, b) => a.x - b.x);
       return lineItems.map((item) => item.text).join(" ");
     });
+
+  debugLog(`Page ${pageNumber}: Formed ${lines.length} lines`);
+  if (state.debug) {
+    console.log(`%c📄 Page ${pageNumber} Lines:`, 'color: #1fc9e5; font-weight: bold;');
+    lines.forEach((line, i) => console.log(`  ${i + 1}: ${line}`));
+  }
+
+  return lines;
 }
 
 function parseNumberTokens(line) {
@@ -275,8 +362,11 @@ function parseNumberTokens(line) {
 }
 
 async function parseLafayette(pdfDoc) {
+  debugLog('Starting Lafayette Life parsing...');
   const startPage = parseNumber(lafayetteStart.value) || 11;
   const endPage = parseNumber(lafayetteEnd.value) || 14;
+  debugLog(`Lafayette pages: ${startPage} to ${endPage}`);
+
   const tablePages = [];
   for (let page = startPage; page <= endPage; page += 1) {
     tablePages.push(page);
@@ -284,28 +374,67 @@ async function parseLafayette(pdfDoc) {
   const rows = [];
   for (const pageNumber of tablePages) {
     const lines = await extractLinesFromPage(pdfDoc, pageNumber);
-    lines.forEach((line) => {
-      if (!/^\d{1,3}\s+/.test(line)) return;
+    debugLog(`Processing ${lines.length} lines from page ${pageNumber}`);
+
+    lines.forEach((line, lineIndex) => {
+      // Lafayette lines start with Age (2 digits) followed by Year
+      if (!/^\d{2}\s+\d/.test(line)) {
+        debugLog(`  Line ${lineIndex + 1}: Skipped (doesn't match age+year pattern)`);
+        return;
+      }
+
+      debugLog(`\n  📋 Line ${lineIndex + 1} RAW TEXT: "${line}"`);
       const tokens = parseNumberTokens(line);
-      if (tokens.length < 8) return;
+      debugLog(`  Found ${tokens.length} tokens:`, tokens);
 
-      const year = parseNumber(tokens[tokens.length - 1]);
-      const age = parseNumber(tokens[0]);
-      const annualPremium = parseNumber(tokens[tokens.length - 2]);
-      const deathBenefit = parseNumber(tokens[tokens.length - 3]);
-      const cashValue = parseNumber(tokens[tokens.length - 7]);
+      if (tokens.length < 11) {
+        debugLog(`    ❌ Skipped: Not enough tokens (need 11+, found ${tokens.length})`);
+        return;
+      }
 
-      if (!year || !age) return;
-      rows.push({
-        year,
-        age,
-        annualPremium,
-        cashValue,
-        deathBenefit,
-      });
+      // CORRECT extraction logic based on Lafayette Life table structure
+      const ageIndex = 0;              // Column 1: Age
+      const yearIndex = 1;             // Column 2: Year
+      const annualPremiumIndex = 2;   // Column 3: Contract Premium
+      const cashValueIndex = 9;        // Column 10: Non-Guaranteed Cash Value
+      const deathBenefitIndex = 10;   // Column 11: Death Benefit
+
+      const year = parseNumber(tokens[yearIndex]);
+      const age = parseNumber(tokens[ageIndex]);
+      const annualPremium = parseNumber(tokens[annualPremiumIndex]);
+      const deathBenefit = parseNumber(tokens[deathBenefitIndex]);
+      const cashValue = parseNumber(tokens[cashValueIndex]);
+
+      debugLog(`  📊 COLUMN MAPPING:`);
+      debugLog(`     tokens[${ageIndex}] = "${tokens[ageIndex]}" → age = ${age}`);
+      debugLog(`     tokens[${yearIndex}] = "${tokens[yearIndex]}" → year = ${year}`);
+      debugLog(`     tokens[${annualPremiumIndex}] = "${tokens[annualPremiumIndex]}" → annualPremium = ${annualPremium}`);
+      debugLog(`     tokens[${cashValueIndex}] = "${tokens[cashValueIndex]}" → cashValue = ${cashValue}`);
+      debugLog(`     tokens[${deathBenefitIndex}] = "${tokens[deathBenefitIndex]}" → deathBenefit = ${deathBenefit}`);
+
+      // Validation: skip invalid rows (summary lines, etc.)
+      if (!year || !age) {
+        debugLog(`    ❌ Skipped: Missing year or age`);
+        return;
+      }
+      if (year < 1 || year > 100) {
+        debugLog(`    ❌ Skipped: Invalid year ${year} (must be 1-100)`);
+        return;
+      }
+      if (age < 18 || age > 120) {
+        debugLog(`    ❌ Skipped: Invalid age ${age} (must be 18-120)`);
+        return;
+      }
+
+      const row = { year, age, annualPremium, cashValue, deathBenefit };
+      debugLog(`    ✅ FINAL ROW:`, row);
+      debugLog(`\n`);
+      rows.push(row);
     });
   }
 
+  debugLog(`Lafayette parsing complete: ${rows.length} rows extracted`);
+  console.table(rows);
   return rows.sort((a, b) => a.year - b.year);
 }
 
@@ -337,49 +466,71 @@ async function extractLafayetteSummary(pdfDoc, rows) {
 }
 
 async function parseMassMutual(pdfDoc) {
+  debugLog('Starting MassMutual parsing...');
   const supplementalPage = parseNumber(massSupplemental.value) || 13;
   const reducedPaidUpPage = parseNumber(massReduced.value) || 14;
+  debugLog(`MassMutual supplemental page: ${supplementalPage}, reduced paid-up: ${reducedPaidUpPage}`);
   const rows = [];
 
+  debugLog('Parsing supplemental page (active premium years)...');
   const supplementalLines = await extractLinesFromPage(pdfDoc, supplementalPage);
-  supplementalLines.forEach((line) => {
-    if (!/^\d+\s+\d+/.test(line)) return;
+  supplementalLines.forEach((line, lineIndex) => {
+    if (!/^\d+\s+\d+/.test(line)) {
+      debugLog(`  Line ${lineIndex + 1}: Skipped (doesn't match pattern)`);
+      return;
+    }
     const tokens = parseNumberTokens(line);
-    if (tokens.length < 11) return;
+    debugLog(`  Line ${lineIndex + 1}: Found ${tokens.length} tokens:`, tokens);
+
+    if (tokens.length < 11) {
+      debugLog(`    Skipped: Not enough tokens (need 11+)`);
+      return;
+    }
     const year = parseNumber(tokens[0]);
     const age = parseNumber(tokens[1]);
     const annualPremium = parseNumber(tokens[2]);
     const cashValue = parseNumber(tokens[7]);
     const deathBenefit = parseNumber(tokens[10]);
-    if (!year || !age) return;
-    rows.push({
-      year,
-      age,
-      annualPremium,
-      cashValue,
-      deathBenefit,
-    });
+    if (!year || !age) {
+      debugLog(`    Skipped: Missing year or age`);
+      return;
+    }
+
+    const row = { year, age, annualPremium, cashValue, deathBenefit };
+    debugLog(`    ✓ Parsed:`, row);
+    rows.push(row);
   });
 
+  debugLog('Parsing reduced paid-up page...');
   const reducedLines = await extractLinesFromPage(pdfDoc, reducedPaidUpPage);
-  reducedLines.forEach((line) => {
-    if (!/^\d+\s+\d+/.test(line)) return;
+  reducedLines.forEach((line, lineIndex) => {
+    if (!/^\d+\s+\d+/.test(line)) {
+      debugLog(`  Line ${lineIndex + 1}: Skipped (doesn't match pattern)`);
+      return;
+    }
     const tokens = parseNumberTokens(line);
-    if (tokens.length < 8) return;
+    debugLog(`  Line ${lineIndex + 1}: Found ${tokens.length} tokens:`, tokens);
+
+    if (tokens.length < 8) {
+      debugLog(`    Skipped: Not enough tokens (need 8+)`);
+      return;
+    }
     const year = parseNumber(tokens[0]);
     const age = parseNumber(tokens[1]);
     const cashValue = parseNumber(tokens[tokens.length - 2]);
     const deathBenefit = parseNumber(tokens[tokens.length - 1]);
-    if (!year || !age) return;
-    rows.push({
-      year,
-      age,
-      annualPremium: 0,
-      cashValue,
-      deathBenefit,
-    });
+    if (!year || !age) {
+      debugLog(`    Skipped: Missing year or age`);
+      return;
+    }
+
+    const row = { year, age, annualPremium: 0, cashValue, deathBenefit };
+    debugLog(`    ✓ Parsed:`, row);
+    rows.push(row);
   });
 
+  debugLog(`MassMutual parsing complete: ${rows.length} rows extracted`);
+  console.table(rows);
   return rows.sort((a, b) => a.year - b.year);
 }
 
@@ -417,6 +568,7 @@ function renderTable() {
   const years = Array.from(allYears).sort((a, b) => a - b);
 
   const metrics = [
+    { key: "age", label: "Age" },
     { key: "annualPremium", label: "Annual Premium" },
     { key: "cumulativeOutlay", label: "Cumulative Outlay" },
     { key: "cashValue", label: "Cash Value" },
@@ -430,18 +582,22 @@ function renderTable() {
   if (toggleEfficiency.checked) {
     optionalMetrics.push({ key: "cashValueEfficiency", label: "Cash Value Efficiency" });
   }
-  if (toggleCashOverCash.checked) {
-    optionalMetrics.push({ key: "cashOverCash", label: "Cash over Cash" });
+  if (toggleIrr.checked) {
+    optionalMetrics.push({ key: "irr", label: "IRR" });
   }
 
   const totalMetrics = metrics.concat(optionalMetrics);
 
-  let html = "<table><thead><tr><th>Year</th>";
+  // Header row 1: Option names with proper colspan (including Year column)
+  let html = "<table><thead><tr><th></th>";
   state.options.forEach((option, idx) => {
     const name = option?.name || `Option ${idx + 1}`;
     html += `<th colspan="${totalMetrics.length}">${name}</th>`;
   });
-  html += "</tr><tr><th></th>";
+  html += "</tr>";
+
+  // Header row 2: Year + metric labels for each option
+  html += "<tr><th>Year</th>";
   state.options.forEach(() => {
     totalMetrics.forEach((metric) => {
       html += `<th>${metric.label}</th>`;
@@ -462,15 +618,21 @@ function renderTable() {
         const isOverride =
           overrideKey && Object.prototype.hasOwnProperty.call(state.overrides, overrideKey);
         const className = isOverride ? "editable override" : "editable";
+
+        // Format as percentage for efficiency metrics
+        const isPercentage = metric.key === "cashValueEfficiency" || metric.key === "irr";
+        const decimals = metric.key === "irr" ? 2 : 0;  // IRR shows 2 decimals
+
         if (
           row &&
           metric.key !== "cashValueIncrease" &&
           metric.key !== "cashValueEfficiency" &&
-          metric.key !== "cashOverCash"
+          metric.key !== "irr" &&
+          metric.key !== "age"  // Age should not be editable
         ) {
-          html += `<td contenteditable="true" data-option="${optionIndex}" data-year="${row.year}" data-field="${metric.key}" class="${className}">${formatNumber(value)}</td>`;
+          html += `<td contenteditable="true" data-option="${optionIndex}" data-year="${row.year}" data-field="${metric.key}" class="${className}">${formatNumber(value, isPercentage, decimals)}</td>`;
         } else {
-          html += `<td>${formatNumber(value)}</td>`;
+          html += `<td>${formatNumber(value, isPercentage, decimals)}</td>`;
         }
       });
     });
@@ -497,11 +659,13 @@ function renderTable() {
 
 function getMetricValue(optionIndex, row, previousRow, key) {
   if (!row) return null;
+  const age = getValueWithOverride(optionIndex, row, "age");
   const annualPremium = getValueWithOverride(optionIndex, row, "annualPremium");
   const cumulativeOutlay = getValueWithOverride(optionIndex, row, "cumulativeOutlay");
   const cashValue = getValueWithOverride(optionIndex, row, "cashValue");
   const deathBenefit = getValueWithOverride(optionIndex, row, "deathBenefit");
 
+  if (key === "age") return age;
   if (key === "annualPremium") return annualPremium;
   if (key === "cumulativeOutlay") return cumulativeOutlay;
   if (key === "cashValue") return cashValue;
@@ -516,18 +680,67 @@ function getMetricValue(optionIndex, row, previousRow, key) {
     if (!cumulativeOutlay) return null;
     return cashValue / cumulativeOutlay;
   }
-  if (key === "cashOverCash") {
-    const prevValue = previousRow
-      ? getValueWithOverride(optionIndex, previousRow, "cashValue")
-      : 0;
-    const increase = cashValue - prevValue;
-    if (!annualPremium) return null;
-    return increase / annualPremium;
+  if (key === "irr") {
+    // Calculate IRR: the rate of return if policy is surrendered at this year
+    return calculateIRR(optionIndex, row);
   }
   return null;
 }
 
+// IRR Calculation using Newton-Raphson method
+function calculateIRR(optionIndex, currentRow) {
+  if (!currentRow || !state.options[optionIndex]) return null;
+
+  const option = state.options[optionIndex];
+  const years = option.rows.filter(r => r.year <= currentRow.year);
+
+  // Build cash flows: negative for premiums, positive for ending cash value
+  const cashFlows = years.map((row, index) => {
+    const premium = getValueWithOverride(optionIndex, row, "annualPremium") || 0;
+    const cashValue = getValueWithOverride(optionIndex, row, "cashValue") || 0;
+
+    // Last year: return cash value (surrender)
+    if (index === years.length - 1) {
+      return cashValue - premium;
+    }
+    // Other years: just the premium outflow
+    return -premium;
+  });
+
+  // Newton-Raphson iteration to find IRR
+  let irr = 0.05; // Initial guess: 5%
+  const maxIterations = 100;
+  const tolerance = 0.0001;
+
+  for (let i = 0; i < maxIterations; i++) {
+    let npv = 0;
+    let derivative = 0;
+
+    cashFlows.forEach((cf, t) => {
+      npv += cf / Math.pow(1 + irr, t);
+      derivative -= t * cf / Math.pow(1 + irr, t + 1);
+    });
+
+    if (Math.abs(npv) < tolerance) {
+      return irr; // Found it!
+    }
+
+    if (derivative === 0) return null; // Can't continue
+
+    irr = irr - npv / derivative;
+
+    // Prevent extreme values
+    if (irr < -0.99) irr = -0.99;
+    if (irr > 10) irr = 10;
+  }
+
+  return irr; // Return best guess after max iterations
+}
+
 function renderChart() {
+  // Get selected metric from radio buttons
+  const selectedMetric = document.querySelector('input[name="chartMetric"]:checked')?.value || "cashValue";
+
   const labels = [];
   state.options.forEach((option) => {
     option?.rows.forEach((row) => labels.push(row.year));
@@ -537,14 +750,15 @@ function renderChart() {
   const datasets = state.options.map((option, index) => {
     const data = uniqueLabels.map((year) => {
       const row = option?.rows.find((r) => r.year === year);
-      return row ? getValueWithOverride(index, row, "cashValue") : null;
+      return row ? getValueWithOverride(index, row, selectedMetric) : null;
     });
     return {
       label: option?.name || `Option ${index + 1}`,
       data,
-      borderColor: ["#1d4ed8", "#10b981", "#f97316"][index],
+      borderColor: ["#1fc9e5", "#24ce62", "#35f1ce"][index],
       backgroundColor: "transparent",
       spanGaps: true,
+      tension: 0.1,
     };
   });
 
@@ -564,6 +778,7 @@ function renderChart() {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       plugins: {
         legend: {
           position: "bottom",
@@ -699,7 +914,12 @@ async function handleLoadComparison() {
     }
 
     renderAll();
-    updateOptionStatusDisplay();
+    // Update status displays
+    for (let i = 0; i < 3; i++) {
+      if (state.options[i]) {
+        updateOptionStatus(i, `✓ ${state.options[i].name}`, "success");
+      }
+    }
     setStatus(`Loaded comparison: ${comparison.name}`);
   } catch (error) {
     console.error("Load error:", error);
@@ -707,5 +927,4 @@ async function handleLoadComparison() {
   }
 }
 
-updateOptionStatusDisplay();
 renderAll();
