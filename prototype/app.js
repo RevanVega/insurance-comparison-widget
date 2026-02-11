@@ -200,7 +200,26 @@ function setOption(index, name, carrier, rows, summary, filename) {
   };
   state.lastImportedOption = index;
   updateSummary(summary);
+  updateOptionStatusDisplay();
   renderAll();
+
+  // Reset form for next upload
+  pdfInput.value = "";
+  reportNameInput.value = "";
+}
+
+function updateOptionStatusDisplay() {
+  for (let i = 0; i < 3; i++) {
+    const statusDiv = document.getElementById(`status${i}`);
+    const contentDiv = document.getElementById(`statusContent${i}`);
+    if (state.options[i]) {
+      statusDiv.classList.add("loaded");
+      contentDiv.textContent = `✓ ${state.options[i].name}`;
+    } else {
+      statusDiv.classList.remove("loaded");
+      contentDiv.textContent = "Empty";
+    }
+  }
 }
 
 function applyCumulativeOutlay(rows) {
@@ -680,6 +699,7 @@ async function handleLoadComparison() {
     }
 
     renderAll();
+    updateOptionStatusDisplay();
     setStatus(`Loaded comparison: ${comparison.name}`);
   } catch (error) {
     console.error("Load error:", error);
@@ -687,4 +707,5 @@ async function handleLoadComparison() {
   }
 }
 
+updateOptionStatusDisplay();
 renderAll();

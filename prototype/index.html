@@ -23,6 +23,22 @@
 
     <section class="card">
       <h2>Upload Illustration</h2>
+      <div class="upload-status-grid">
+        <div class="option-status" id="status0">
+          <div class="status-header">Option 1</div>
+          <div class="status-content" id="statusContent0">Empty</div>
+        </div>
+        <div class="option-status" id="status1">
+          <div class="status-header">Option 2</div>
+          <div class="status-content" id="statusContent1">Empty</div>
+        </div>
+        <div class="option-status" id="status2">
+          <div class="status-header">Option 3</div>
+          <div class="status-content" id="statusContent2">Empty</div>
+        </div>
+      </div>
+      <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;" />
+      <h3>Upload Individual PDF</h3>
       <div class="grid">
         <label>
           Carrier
@@ -48,14 +64,20 @@
           Upload PDF illustration
           <input id="pdfInput" type="file" accept="application/pdf" />
         </label>
+      </div>
+      <div class="actions">
+        <button id="parsePdf">Parse PDF</button>
+      </div>
+      <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;" />
+      <h3>Or Upload CSV (All 3 Options)</h3>
+      <div class="grid">
         <label>
           Upload CSV (template export)
           <input id="csvInput" type="file" accept=".csv" />
         </label>
       </div>
       <div class="actions">
-        <button id="parsePdf">Parse PDF</button>
-        <button id="parseCsv">Parse CSV</button>
+        <button id="parseCsv">Parse CSV (Loads All 3 Options)</button>
       </div>
       <details class="advanced">
         <summary>Advanced page ranges</summary>
