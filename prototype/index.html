@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Insurance Comparison Prototype</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="./storage.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>Insurance Comparison Prototype</h1>
+        <p>Upload CSV or carrier illustration PDFs, then compare up to three options side by side.</p>
+      </div>
+      <button id="exportPdf" class="primary">Save Comparison as PDF</button>
+    </header>
+
+    <section class="card">
+      <h2>Upload Illustration</h2>
+      <div class="grid">
+        <label>
+          Carrier
+          <select id="carrierSelect">
+            <option value="">Select carrier</option>
+            <option value="lafayette">Lafayette Life</option>
+            <option value="massmutual">MassMutual</option>
+          </select>
+        </label>
+        <label>
+          Assign to option
+          <select id="optionSelect">
+            <option value="0">Option 1</option>
+            <option value="1">Option 2</option>
+            <option value="2">Option 3</option>
+          </select>
+        </label>
+        <label>
+          Client-facing name
+          <input id="reportName" type="text" placeholder="e.g., Don Johnson - New Option" />
+        </label>
+        <label>
+          Upload PDF illustration
+          <input id="pdfInput" type="file" accept="application/pdf" />
+        </label>
+        <label>
+          Upload CSV (template export)
+          <input id="csvInput" type="file" accept=".csv" />
+        </label>
+      </div>
+      <div class="actions">
+        <button id="parsePdf">Parse PDF</button>
+        <button id="parseCsv">Parse CSV</button>
+      </div>
+      <details class="advanced">
+        <summary>Advanced page ranges</summary>
+        <div class="grid">
+          <label>
+            Lafayette table start page
+            <input id="lafayetteStart" type="number" value="11" min="1" />
+          </label>
+          <label>
+            Lafayette table end page
+            <input id="lafayetteEnd" type="number" value="14" min="1" />
+          </label>
+          <label>
+            Lafayette summary page
+            <input id="lafayetteSummary" type="number" value="16" min="1" />
+          </label>
+          <label>
+            MassMutual supplemental page
+            <input id="massSupplemental" type="number" value="13" min="1" />
+          </label>
+          <label>
+            MassMutual reduced paid-up page
+            <input id="massReduced" type="number" value="14" min="1" />
+          </label>
+          <label>
+            MassMutual summary page
+            <input id="massSummary" type="number" value="7" min="1" />
+          </label>
+        </div>
+        <p class="hint">Use the page number shown in your PDF viewer.</p>
+      </details>
+      <div id="uploadStatus" class="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>Imported Illustration Summary</h2>
+      <div class="summary-grid">
+        <div>
+          <div class="label">Initial Death Benefit</div>
+          <div id="summaryDeathBenefit">—</div>
+        </div>
+        <div>
+          <div class="label">Base Annual Premium</div>
+          <div id="summaryBasePremium">—</div>
+        </div>
+        <div>
+          <div class="label">PUA Premium</div>
+          <div id="summaryPuaPremium">—</div>
+        </div>
+        <div>
+          <div class="label">Term Rider Premium</div>
+          <div id="summaryTermPremium">—</div>
+        </div>
+        <div>
+          <div class="label">Single Lump Sum PUA</div>
+          <div id="summarySpuaPremium">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>View Controls</h2>
+      <div class="toggle-row">
+        <label><input type="checkbox" id="toggleCashIncrease" checked /> Cash value increase</label>
+        <label><input type="checkbox" id="toggleEfficiency" checked /> Cash value efficiency</label>
+        <label><input type="checkbox" id="toggleCashOverCash" checked /> Cash over cash return</label>
+        <label class="disabled"><input type="checkbox" id="toggleIrr" disabled /> Internal IRR (phase 2)</label>
+      </div>
+    </section>
+
+    <section class="card comparison-view" id="comparisonView">
+      <div class="table-header">
+        <h2>Comparison Table (Editable)</h2>
+        <button id="resetOverrides">Reset Overrides</button>
+      </div>
+      <div id="comparisonTable"></div>
+      <div class="chart-area">
+        <h2>Line Chart</h2>
+        <canvas id="comparisonChart"></canvas>
+      </div>
+    </section>
+
+    <footer class="app-footer">
+      <div>
+        <button id="saveComparison" class="secondary">Save Comparison</button>
+        <button id="loadComparison" class="secondary">Load Saved Comparison</button>
+        <span class="footer-note">Storage: LocalStorage (Supabase integration ready for phase 2)</span>
+      </div>
+    </footer>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
