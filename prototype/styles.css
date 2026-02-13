@@ -47,6 +47,18 @@ body {
   opacity: 0.8;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-status {
+  color: #000000;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
 .card {
   background: #151a23;
   margin: 20px 32px;
@@ -210,6 +222,111 @@ button.primary:hover {
   font-weight: 700;
 }
 
+/* Illustration Summaries - Side by Side */
+.illustration-summaries {
+  display: flex;
+  gap: 16px;
+}
+
+.illustration-summary-card {
+  flex: 1;
+  background: #1e2530;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  overflow: hidden;
+}
+
+.illustration-summary-card:nth-child(1) {
+  border-top: 3px solid #1fc9e5;
+}
+
+.illustration-summary-card:nth-child(2) {
+  border-top: 3px solid #24ce62;
+}
+
+.illustration-summary-card:nth-child(3) {
+  border-top: 3px solid #35f1ce;
+}
+
+.illustration-summary-card h3 {
+  margin: 0;
+  padding: 12px 16px;
+  background: rgba(31, 201, 229, 0.05);
+  font-size: 1rem;
+  color: #ffffff;
+  border-bottom: 1px solid #374151;
+}
+
+.illustration-summary-card:nth-child(2) h3 {
+  background: rgba(36, 206, 98, 0.05);
+}
+
+.illustration-summary-card:nth-child(3) h3 {
+  background: rgba(53, 241, 206, 0.05);
+}
+
+.summary-content {
+  padding: 16px;
+}
+
+.summary-content.empty {
+  text-align: center;
+  color: #6b7280;
+  padding: 32px 16px;
+}
+
+.summary-content.empty p {
+  margin: 0;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #2d3748;
+}
+
+.summary-row:last-child {
+  border-bottom: none;
+}
+
+.summary-row .label {
+  color: #9ca3af;
+  font-size: 0.85rem;
+}
+
+.summary-row .value {
+  color: #e5e7eb;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.summary-row.total {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 2px solid #374151;
+  border-bottom: none;
+}
+
+.summary-row.total .label {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.summary-row.total .value {
+  background: linear-gradient(132deg, rgb(31, 201, 229) 0%, rgb(36, 206, 98) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-size: 1.1rem;
+}
+
+@media (max-width: 900px) {
+  .illustration-summaries {
+    flex-direction: column;
+  }
+}
+
 .toggle-row {
   display: flex;
   flex-wrap: wrap;
@@ -288,25 +405,61 @@ tbody td:first-child {
   max-width: 80px;
 }
 
+/* Year column styling for main table */
+#comparisonTable .year-header,
+#comparisonTable .year-cell {
+  background: #0d1117 !important;
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
+/* Option color coding for main table */
+#comparisonTable th.option-color-1,
+#comparisonTable td.option-color-1 {
+  background: rgba(31, 201, 229, 0.08);
+}
+
+#comparisonTable th.option-color-2,
+#comparisonTable td.option-color-2 {
+  background: rgba(36, 206, 98, 0.08);
+}
+
+#comparisonTable th.option-color-3,
+#comparisonTable td.option-color-3 {
+  background: rgba(53, 241, 206, 0.08);
+}
+
+#comparisonTable thead th.option-header.option-color-1 {
+  background: rgba(31, 201, 229, 0.2);
+  border-bottom: 3px solid #1fc9e5;
+}
+
+#comparisonTable thead th.option-header.option-color-2 {
+  background: rgba(36, 206, 98, 0.2);
+  border-bottom: 3px solid #24ce62;
+}
+
+#comparisonTable thead th.option-header.option-color-3 {
+  background: rgba(53, 241, 206, 0.2);
+  border-bottom: 3px solid #35f1ce;
+}
+
 .editable {
-  background: #1e2530;
   cursor: pointer;
 }
 
 .editable:hover {
-  background: #252d3a;
+  filter: brightness(1.2);
 }
 
 .editable:focus {
   outline: 2px solid #1fc9e5;
   outline-offset: -2px;
-  background: #1e3a40;
 }
 
 .override {
-  background: rgba(31, 201, 229, 0.1);
   border-left: 3px solid #1fc9e5;
-  box-shadow: inset 0 0 20px rgba(31, 201, 229, 0.05);
+  box-shadow: inset 0 0 20px rgba(31, 201, 229, 0.1);
 }
 
 .chart-area {
@@ -325,6 +478,12 @@ tbody td:first-child {
   margin: 0;
 }
 
+.chart-controls {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
 .chart-toggles {
   display: flex;
   gap: 12px;
@@ -332,6 +491,53 @@ tbody td:first-child {
   padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid #374151;
+}
+
+.chart-year-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1e2530;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #374151;
+}
+
+.chart-year-slider .slider-label {
+  color: #9ca3af;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.chart-year-slider input[type="range"] {
+  width: 120px;
+  cursor: pointer;
+  accent-color: #1fc9e5;
+}
+
+.year-badge {
+  background: linear-gradient(132deg, rgb(31, 201, 229) 0%, rgb(36, 206, 98) 100%);
+  color: #000;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 4px 10px;
+  border-radius: 12px;
+  min-width: 50px;
+  text-align: center;
+}
+
+.chart-disclaimer {
+  background: rgba(31, 201, 229, 0.1);
+  border: 1px solid rgba(31, 201, 229, 0.3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
+.chart-disclaimer span {
+  color: #d1d5db;
 }
 
 .chart-toggle-option {
@@ -457,4 +663,430 @@ button.secondary:hover {
 .clear-btn:hover {
   background: rgba(239, 68, 68, 0.1);
   border-color: #dc2626;
+}
+
+/* PDF Export Styles */
+.pdf-export-container {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 10.5in;
+  background: #ffffff;
+  color: #1a1a1a;
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+}
+
+.pdf-content {
+  width: 10.5in;
+  background: #ffffff;
+}
+
+.pdf-section {
+  width: 10.5in;
+  padding: 0.4in;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.pdf-section-1 {
+  page-break-after: always;
+}
+
+.pdf-section-3 {
+  page-break-before: always;
+  min-height: 6in;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Legacy support */
+.pdf-page {
+  width: 10.5in;
+  min-height: 8in;
+  padding: 0.4in;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.pdf-page-1 {
+  page-break-after: always;
+}
+
+.pdf-page-3 {
+  page-break-before: always;
+}
+
+.pdf-page-1 {
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-header {
+  text-align: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #1fc9e5;
+}
+
+.pdf-header h1 {
+  margin: 0 0 2px 0;
+  font-size: 20px;
+  color: #1a1a1a;
+}
+
+.pdf-date {
+  margin: 0;
+  color: #666;
+  font-size: 10px;
+}
+
+.pdf-summaries {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pdf-summary-card {
+  flex: 1;
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  border-top: 3px solid #1fc9e5;
+}
+
+.pdf-summary-card.hidden {
+  display: none;
+}
+
+.pdf-summary-card:nth-child(2) {
+  border-top-color: #24ce62;
+}
+
+.pdf-summary-card:nth-child(3) {
+  border-top-color: #35f1ce;
+}
+
+.pdf-option-name {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: #1a1a1a;
+  font-weight: 700;
+}
+
+.pdf-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  padding: 2px 0;
+  border-bottom: 1px solid #eee;
+  color: #1a1a1a;
+}
+
+.pdf-summary-row span:first-child {
+  color: #374151;
+}
+
+.pdf-summary-row:last-child {
+  border-bottom: none;
+  padding-top: 4px;
+  margin-top: 3px;
+  border-top: 1px solid #ddd;
+}
+
+.pdf-summary-row .value {
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.pdf-summary-row .value.total {
+  color: #047857;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pdf-chart-section {
+  margin-bottom: 12px;
+}
+
+.pdf-chart-section h2 {
+  font-size: 12px;
+  margin: 0 0 6px 0;
+  color: #1a1a1a;
+}
+
+.pdf-chart-section canvas {
+  width: 100% !important;
+  height: 200px !important;
+}
+
+.pdf-chart-disclaimer {
+  font-size: 9px;
+  color: #6b7280;
+  font-style: italic;
+  margin: 0 0 6px 0;
+  padding: 4px 8px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.pdf-talking-points {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfeff 100%);
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.pdf-talking-points h2 {
+  font-size: 12px;
+  margin: 0 0 8px 0;
+  color: #1a1a1a;
+  text-align: center;
+}
+
+.pdf-points-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.pdf-points-column h3 {
+  font-size: 10px;
+  margin: 0 0 4px 0;
+  color: #047857;
+  border-bottom: 1px solid #a7f3d0;
+  padding-bottom: 2px;
+}
+
+.pdf-points-column ul {
+  margin: 0;
+  padding: 0 0 0 14px;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.pdf-points-column li {
+  margin-bottom: 2px;
+  color: #374151;
+}
+
+.pdf-points-column li strong {
+  color: #1a1a1a;
+}
+
+.pdf-points-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.pdf-point {
+  font-size: 11px;
+}
+
+.pdf-point strong {
+  display: block;
+  color: #047857;
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+
+.pdf-point p {
+  margin: 0;
+  color: #374151;
+  line-height: 1.4;
+}
+
+/* Page 2: Table styles */
+.pdf-page-2 h2 {
+  font-size: 16px;
+  margin: 0 0 12px 0;
+  color: #1a1a1a;
+  text-align: center;
+}
+
+.pdf-table-container {
+  overflow: hidden;
+}
+
+.pdf-table-container table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9px;
+  background: #ffffff;
+  table-layout: fixed;
+}
+
+.pdf-table-container th,
+.pdf-table-container td {
+  border: 1px solid #d1d5db;
+  padding: 4px 6px;
+  text-align: right;
+  color: #1a1a1a;
+  min-width: auto;
+  max-width: none;
+}
+
+.pdf-table-container th {
+  background: #f3f4f6 !important;
+  color: #1a1a1a !important;
+  font-weight: 600;
+  text-align: center !important;
+  border-bottom: 2px solid #9ca3af;
+}
+
+.pdf-table-container thead tr:first-child th {
+  background: linear-gradient(135deg, #ecfeff 0%, #f0fdf4 100%) !important;
+  font-size: 10px;
+  padding: 6px;
+}
+
+.pdf-table-container tbody td:first-child {
+  text-align: center !important;
+  font-weight: 600;
+  background: #f9fafb;
+}
+
+.pdf-table-container tbody tr:nth-child(even) {
+  background: #f9fafb;
+}
+
+.pdf-table-container tbody tr:nth-child(5n) {
+  border-bottom: 2px solid #9ca3af;
+}
+
+/* Prevent rows from splitting across pages */
+.pdf-table-container table {
+  page-break-inside: auto;
+}
+
+.pdf-table-container thead {
+  display: table-header-group;
+}
+
+.pdf-table-container tbody tr,
+.pdf-table-container .pdf-table-row {
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+  page-break-after: auto;
+}
+
+.pdf-table-container thead tr {
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+  page-break-after: avoid;
+}
+
+/* html2pdf specific class */
+[data-html2pdf-page-break-avoid] {
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+}
+
+/* Year column styling */
+.pdf-table-container .year-header,
+.pdf-table-container .year-cell {
+  background: #1a1a1a !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  text-align: center !important;
+}
+
+/* Option color coding */
+.pdf-table-container th.option-color-1,
+.pdf-table-container td.option-color-1 {
+  background: rgba(31, 201, 229, 0.1);
+}
+
+.pdf-table-container th.option-color-2,
+.pdf-table-container td.option-color-2 {
+  background: rgba(36, 206, 98, 0.1);
+}
+
+.pdf-table-container th.option-color-3,
+.pdf-table-container td.option-color-3 {
+  background: rgba(53, 241, 206, 0.1);
+}
+
+.pdf-table-container thead th.option-color-1 {
+  background: rgba(31, 201, 229, 0.25);
+  border-bottom: 3px solid #1fc9e5;
+}
+
+.pdf-table-container thead th.option-color-2 {
+  background: rgba(36, 206, 98, 0.25);
+  border-bottom: 3px solid #24ce62;
+}
+
+.pdf-table-container thead th.option-color-3 {
+  background: rgba(53, 241, 206, 0.25);
+  border-bottom: 3px solid #35f1ce;
+}
+
+/* Disclaimer Page Styles */
+.pdf-disclaimer-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pdf-disclaimer {
+  max-width: 8in;
+  padding: 20px;
+}
+
+.pdf-disclaimer h2 {
+  font-size: 20px;
+  color: #1a1a1a;
+  text-align: center;
+  margin: 0 0 24px 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #1fc9e5;
+}
+
+.disclaimer-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #1fc9e5;
+}
+
+.disclaimer-section.important {
+  background: #fef3c7;
+  border-left-color: #f59e0b;
+}
+
+.disclaimer-section h3 {
+  font-size: 13px;
+  color: #1a1a1a;
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.disclaimer-section p {
+  font-size: 11px;
+  color: #374151;
+  line-height: 1.6;
+  margin: 0 0 8px 0;
+}
+
+.disclaimer-section p:last-child {
+  margin-bottom: 0;
+}
+
+.disclaimer-footer {
+  text-align: center;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.disclaimer-footer p {
+  font-size: 10px;
+  color: #6b7280;
+  margin: 0;
 }

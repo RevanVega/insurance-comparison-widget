@@ -1,3 +1,20 @@
+console.log("App.js loading...");
+
+// Test slider immediately
+document.addEventListener("DOMContentLoaded", function() {
+  const slider = document.getElementById("chartYearMax");
+  const badge = document.getElementById("yearRangeDisplay");
+  console.log("DOM loaded, slider:", slider, "badge:", badge);
+
+  if (slider && badge) {
+    slider.oninput = function() {
+      console.log("SLIDER VALUE:", this.value);
+      badge.textContent = "1-" + this.value;
+    };
+    console.log("Slider event attached!");
+  }
+});
+
 const pdfjsLib = window["pdfjs-dist/build/pdf"];
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -7,6 +24,7 @@ const state = {
   overrides: {},
   lastImportedOption: null,
   chart: null,
+  pdfChart: null,
   sourcePdfs: {},
   debug: false,
 };
@@ -41,30 +59,49 @@ const massSupplemental = document.getElementById("massSupplemental");
 const massReduced = document.getElementById("massReduced");
 const massSummary = document.getElementById("massSummary");
 
+// Legacy summary elements (kept for compatibility)
 const summaryDeathBenefit = document.getElementById("summaryDeathBenefit");
 const summaryBasePremium = document.getElementById("summaryBasePremium");
 const summaryPuaPremium = document.getElementById("summaryPuaPremium");
 const summaryTermPremium = document.getElementById("summaryTermPremium");
 const summarySpuaPremium = document.getElementById("summarySpuaPremium");
 
+// New individual summary cards
+const illustrationSummaryCards = [
+  document.getElementById("illustrationSummary0"),
+  document.getElementById("illustrationSummary1"),
+  document.getElementById("illustrationSummary2"),
+];
+
 const comparisonTable = document.getElementById("comparisonTable");
 const resetOverrides = document.getElementById("resetOverrides");
 const exportPdf = document.getElementById("exportPdf");
 const saveComparison = document.getElementById("saveComparison");
 const loadComparison = document.getElementById("loadComparison");
+const uploadStatus = document.getElementById("uploadStatus");
 
 const toggleCashIncrease = document.getElementById("toggleCashIncrease");
 const toggleEfficiency = document.getElementById("toggleEfficiency");
 const toggleIrr = document.getElementById("toggleIrr");
 const debugMode = document.getElementById("debugMode");
 const chartMetricRadios = document.querySelectorAll('input[name="chartMetric"]');
+const chartYearMax = document.getElementById("chartYearMax");
+const yearRangeDisplay = document.getElementById("yearRangeDisplay");
+const chartDisclaimer = document.getElementById("chartDisclaimer");
+const disclaimerYears = document.getElementById("disclaimerYears");
 
-debugMode.addEventListener("change", () => {
-  state.debug = debugMode.checked;
-  if (state.debug) {
-    console.log('%c🔍 Debug Mode Enabled', 'color: #1fc9e5; font-size: 16px; font-weight: bold;');
-  }
-});
+console.log("Setting up event listeners...");
+console.log("debugMode element:", debugMode);
+console.log("chartYearMax element:", chartYearMax);
+
+if (debugMode) {
+  debugMode.addEventListener("change", () => {
+    state.debug = debugMode.checked;
+    if (state.debug) {
+      console.log('%c🔍 Debug Mode Enabled', 'color: #1fc9e5; font-size: 16px; font-weight: bold;');
+    }
+  });
+}
 
 // Auto-fill report names when PDFs are selected
 pdfInputs.forEach((input, index) => {
@@ -93,6 +130,45 @@ toggleIrr.addEventListener("change", renderAll);
 chartMetricRadios.forEach(radio => {
   radio.addEventListener("change", renderChart);
 });
+
+if (chartYearMax) {
+  chartYearMax.addEventListener("input", function() {
+    console.log("Slider moved to:", this.value);
+    const maxYear = parseInt(this.value, 10);
+
+    // Update display
+    if (yearRangeDisplay) {
+      yearRangeDisplay.textContent = `1-${maxYear}`;
+    }
+    if (disclaimerYears) {
+      disclaimerYears.textContent = maxYear;
+    }
+
+    // Show/hide disclaimer based on whether all years are shown
+    const allYears = new Set();
+    state.options.forEach((option) => {
+      option?.rows.forEach((row) => allYears.add(row.year));
+    });
+    const totalYears = allYears.size > 0 ? Math.max(...Array.from(allYears)) : 0;
+
+    if (chartDisclaimer) {
+      if (maxYear < totalYears) {
+        chartDisclaimer.style.display = "block";
+      } else {
+        chartDisclaimer.style.display = "none";
+      }
+    }
+
+    // Destroy and recreate chart to force full re-render with new scale
+    if (state.chart) {
+      state.chart.destroy();
+      state.chart = null;
+    }
+    renderChart();
+  });
+} else {
+  console.error("chartYearMax element not found!");
+}
 resetOverrides.addEventListener("click", () => {
   state.overrides = {};
   renderAll();
@@ -166,9 +242,10 @@ async function handlePdfParse(optionIndex) {
   updateOptionStatus(optionIndex, "Parsing PDF...", "loading");
 
   const arrayBuffer = await pdfInput.files[0].arrayBuffer();
-  const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
 
-  state.sourcePdfs[optionIndex] = arrayBuffer;
+  // Store a copy of the ArrayBuffer to prevent detachment issues
+  state.sourcePdfs[optionIndex] = arrayBuffer.slice(0);
 
   if (carrier === "lafayette") {
     const rows = await parseLafayette(pdfDoc);
@@ -253,6 +330,7 @@ function setOption(index, name, carrier, rows, summary, filename) {
   };
   state.lastImportedOption = index;
   updateSummary(summary);
+  updateIllustrationSummary(index, state.options[index]);
   renderAll();
 }
 
@@ -289,7 +367,10 @@ function handleClearOption(optionIndex) {
   // Update status
   updateOptionStatus(optionIndex, "Empty", "info");
 
-  // Clear summary if this was the last imported option
+  // Clear the illustration summary card
+  updateIllustrationSummary(optionIndex, null);
+
+  // Clear legacy summary if this was the last imported option
   if (state.lastImportedOption === optionIndex) {
     updateSummary({});
   }
@@ -311,11 +392,55 @@ function applyCumulativeOutlay(rows) {
 }
 
 function updateSummary(summary) {
-  summaryDeathBenefit.textContent = formatNumber(summary.initialDeathBenefit);
-  summaryBasePremium.textContent = formatNumber(summary.baseAnnualPremium);
-  summaryPuaPremium.textContent = formatNumber(summary.puaPremium);
-  summaryTermPremium.textContent = formatNumber(summary.termPremium);
-  summarySpuaPremium.textContent = formatNumber(summary.spuaPremium);
+  // Legacy function - kept for compatibility
+  if (summaryDeathBenefit) summaryDeathBenefit.textContent = formatNumber(summary.initialDeathBenefit);
+  if (summaryBasePremium) summaryBasePremium.textContent = formatNumber(summary.baseAnnualPremium);
+  if (summaryPuaPremium) summaryPuaPremium.textContent = formatNumber(summary.puaPremium);
+  if (summaryTermPremium) summaryTermPremium.textContent = formatNumber(summary.termPremium);
+  if (summarySpuaPremium) summarySpuaPremium.textContent = formatNumber(summary.spuaPremium);
+}
+
+function updateIllustrationSummary(optionIndex, option) {
+  const card = illustrationSummaryCards[optionIndex];
+  if (!card) return;
+
+  const emptyContent = card.querySelector(".summary-content.empty");
+  const loadedContent = card.querySelector(".summary-content.loaded");
+  const titleEl = card.querySelector("h3");
+
+  if (!option) {
+    // Hide the entire card if not loaded
+    card.style.display = "none";
+    return;
+  }
+
+  // Show the card and loaded state
+  card.style.display = "block";
+  emptyContent.style.display = "none";
+  loadedContent.style.display = "block";
+
+  // Update title with option name
+  titleEl.textContent = option.name || `Illustration ${optionIndex + 1} Summary`;
+
+  const summary = option.summary || {};
+  const totalFirstYearOutlay =
+    (summary.baseAnnualPremium || 0) +
+    (summary.puaPremium || 0) +
+    (summary.termPremium || 0) +
+    (summary.spuaPremium || 0);
+
+  // Update values
+  const setValue = (field, value) => {
+    const el = loadedContent.querySelector(`[data-field="${field}"]`);
+    if (el) el.textContent = formatNumber(value);
+  };
+
+  setValue("deathBenefit", summary.initialDeathBenefit);
+  setValue("basePremium", summary.baseAnnualPremium);
+  setValue("puaPremium", summary.puaPremium);
+  setValue("termPremium", summary.termPremium);
+  setValue("spuaPremium", summary.spuaPremium);
+  setValue("totalPremium", totalFirstYearOutlay || option.rows?.[0]?.annualPremium);
 }
 
 async function extractLinesFromPage(pdfDoc, pageNumber) {
@@ -556,8 +681,38 @@ async function extractMassMutualSummary(pdfDoc, rows) {
 }
 
 function renderAll() {
+  updateYearSlider();
   renderTable();
   renderChart();
+}
+
+function updateYearSlider() {
+  if (!chartYearMax || !yearRangeDisplay) {
+    console.error("Year slider elements not found");
+    return;
+  }
+
+  // Calculate max years from imported data
+  const allYears = new Set();
+  state.options.forEach((option) => {
+    option?.rows.forEach((row) => allYears.add(row.year));
+  });
+
+  if (allYears.size === 0) {
+    // No data loaded, use defaults
+    return;
+  }
+
+  const maxDataYear = Math.max(...Array.from(allYears));
+  console.log("Max data year:", maxDataYear);
+
+  chartYearMax.max = maxDataYear;
+  chartYearMax.value = maxDataYear;
+
+  yearRangeDisplay.textContent = `1-${maxDataYear}`;
+  if (disclaimerYears) {
+    disclaimerYears.textContent = maxDataYear;
+  }
 }
 
 function renderTable() {
@@ -588,25 +743,28 @@ function renderTable() {
 
   const totalMetrics = metrics.concat(optionalMetrics);
 
+  // Option color classes
+  const optionColors = ["option-color-1", "option-color-2", "option-color-3"];
+
   // Header row 1: Option names with proper colspan (including Year column)
-  let html = "<table><thead><tr><th></th>";
+  let html = "<table><thead><tr><th class=\"year-header\"></th>";
   state.options.forEach((option, idx) => {
     const name = option?.name || `Option ${idx + 1}`;
-    html += `<th colspan="${totalMetrics.length}">${name}</th>`;
+    html += `<th colspan="${totalMetrics.length}" class="option-header ${optionColors[idx]}">${name}</th>`;
   });
   html += "</tr>";
 
   // Header row 2: Year + metric labels for each option
-  html += "<tr><th>Year</th>";
-  state.options.forEach(() => {
+  html += "<tr><th class=\"year-header\">Year</th>";
+  state.options.forEach((option, idx) => {
     totalMetrics.forEach((metric) => {
-      html += `<th>${metric.label}</th>`;
+      html += `<th class="${optionColors[idx]}">${metric.label}</th>`;
     });
   });
   html += "</tr></thead><tbody>";
 
   years.forEach((year) => {
-    html += `<tr><td>${year}</td>`;
+    html += `<tr><td class="year-cell">${year}</td>`;
     state.options.forEach((option, optionIndex) => {
       const row = option?.rows.find((r) => r.year === year);
       const previousRow = option?.rows.find((r) => r.year === year - 1);
@@ -617,7 +775,8 @@ function renderTable() {
           : null;
         const isOverride =
           overrideKey && Object.prototype.hasOwnProperty.call(state.overrides, overrideKey);
-        const className = isOverride ? "editable override" : "editable";
+        const baseClass = optionColors[optionIndex];
+        const editableClass = isOverride ? "editable override" : "editable";
 
         // Format as percentage for efficiency metrics
         const isPercentage = metric.key === "cashValueEfficiency" || metric.key === "irr";
@@ -630,9 +789,9 @@ function renderTable() {
           metric.key !== "irr" &&
           metric.key !== "age"  // Age should not be editable
         ) {
-          html += `<td contenteditable="true" data-option="${optionIndex}" data-year="${row.year}" data-field="${metric.key}" class="${className}">${formatNumber(value, isPercentage, decimals)}</td>`;
+          html += `<td contenteditable="true" data-option="${optionIndex}" data-year="${row.year}" data-field="${metric.key}" class="${baseClass} ${editableClass}">${formatNumber(value, isPercentage, decimals)}</td>`;
         } else {
-          html += `<td>${formatNumber(value, isPercentage, decimals)}</td>`;
+          html += `<td class="${baseClass}">${formatNumber(value, isPercentage, decimals)}</td>`;
         }
       });
     });
@@ -740,33 +899,48 @@ function calculateIRR(optionIndex, currentRow) {
 function renderChart() {
   // Get selected metric from radio buttons
   const selectedMetric = document.querySelector('input[name="chartMetric"]:checked')?.value || "cashValue";
+  const maxYear = parseInt(chartYearMax.value, 10) || 50;
 
   const labels = [];
   state.options.forEach((option) => {
     option?.rows.forEach((row) => labels.push(row.year));
   });
-  const uniqueLabels = Array.from(new Set(labels)).sort((a, b) => a - b);
+  const allLabels = Array.from(new Set(labels)).sort((a, b) => a - b);
 
-  const datasets = state.options.map((option, index) => {
-    const data = uniqueLabels.map((year) => {
-      const row = option?.rows.find((r) => r.year === year);
-      return row ? getValueWithOverride(index, row, selectedMetric) : null;
-    });
-    return {
-      label: option?.name || `Option ${index + 1}`,
-      data,
-      borderColor: ["#1fc9e5", "#24ce62", "#35f1ce"][index],
-      backgroundColor: "transparent",
-      spanGaps: true,
-      tension: 0.1,
-    };
-  });
+  // Filter labels by max year
+  const uniqueLabels = allLabels.filter(year => year <= maxYear);
+
+  // Update disclaimer visibility
+  if (allLabels.length > 0 && maxYear < Math.max(...allLabels)) {
+    chartDisclaimer.style.display = "block";
+  } else {
+    chartDisclaimer.style.display = "none";
+  }
+
+  const colors = ["#1fc9e5", "#24ce62", "#35f1ce"];
+  const datasets = state.options
+    .map((option, index) => {
+      if (!option) return null;
+      const data = uniqueLabels.map((year) => {
+        const row = option.rows.find((r) => r.year === year);
+        return row ? getValueWithOverride(index, row, selectedMetric) : null;
+      });
+      return {
+        label: option.name || `Option ${index + 1}`,
+        data,
+        borderColor: colors[index],
+        backgroundColor: "transparent",
+        spanGaps: true,
+        tension: 0.1,
+      };
+    })
+    .filter(Boolean);
 
   const chartEl = document.getElementById("comparisonChart");
   if (state.chart) {
     state.chart.data.labels = uniqueLabels;
     state.chart.data.datasets = datasets;
-    state.chart.update();
+    state.chart.update('none'); // Update without animation for immediate effect
     return;
   }
 
@@ -785,6 +959,21 @@ function renderChart() {
         },
       },
       scales: {
+        x: {
+          ticks: {
+            callback: function(value, index) {
+              const year = this.getLabelForValue(value);
+              // Show years 1-10, then every 5 years
+              if (year <= 10 || year % 5 === 0) {
+                return year;
+              }
+              return '';
+            },
+            autoSkip: false,
+            maxRotation: 0,
+            minRotation: 0,
+          },
+        },
         y: {
           ticks: {
             callback: (value) => Number(value).toLocaleString("en-US"),
@@ -796,45 +985,111 @@ function renderChart() {
 }
 
 async function exportComparisonPdf() {
-  const element = document.getElementById("comparisonView");
-  const opt = {
-    margin: 0.3,
-    filename: `comparison-${Date.now()}.pdf`,
-    image: { type: "jpeg", quality: 0.95 },
-    html2canvas: { scale: 2 },
-    jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
-  };
-
   setStatus("Generating comparison PDF...");
 
-  const comparisonPdfBlob = await html2pdf().set(opt).from(element).output("blob");
-  const sourcePdfCount = Object.keys(state.sourcePdfs).length;
+  // Prepare PDF export container
+  const container = document.getElementById("pdfExportContainer");
+  container.style.left = "0";
+  container.style.position = "fixed";
+  container.style.zIndex = "9999";
 
-  if (sourcePdfCount === 0) {
-    const url = URL.createObjectURL(comparisonPdfBlob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = opt.filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    setStatus("Comparison PDF saved (no source PDFs attached).");
-    return;
+  const dateStr = new Date().toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  // Set dates
+  container.querySelector(".pdf-date").textContent = dateStr;
+  const disclaimerDate = container.querySelector(".disclaimer-date");
+  if (disclaimerDate) {
+    disclaimerDate.textContent = dateStr;
   }
 
+  // Populate summaries for each option
+  console.log("Populating summaries...");
+  populatePdfSummaries();
+
+  // Render chart for PDF
+  console.log("Rendering chart...");
   try {
-    const { PDFDocument } = PDFLib;
-    const mergedPdf = await PDFDocument.create();
+    await renderPdfChart();
+  } catch (chartError) {
+    console.error("Chart render error:", chartError);
+  }
 
-    const comparisonArrayBuffer = await comparisonPdfBlob.arrayBuffer();
-    const comparisonPdf = await PDFDocument.load(comparisonArrayBuffer);
-    const comparisonPages = await mergedPdf.copyPages(comparisonPdf, comparisonPdf.getPageIndices());
-    comparisonPages.forEach((page) => mergedPdf.addPage(page));
+  // Render table for PDF
+  console.log("Rendering table...");
+  renderPdfTable();
 
+  // Give browser time to render
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  // Get the continuous content element
+  const pdfContent = container.querySelector(".pdf-content");
+  console.log("PDF content element:", pdfContent);
+
+  const opt = {
+    margin: [0.4, 0.3, 0.5, 0.3], // top, left, bottom, right
+    filename: `comparison-${Date.now()}.pdf`,
+    image: { type: "jpeg", quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true, logging: false },
+    jsPDF: { unit: "in", format: "letter", orientation: "landscape" },
+    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+  };
+
+  try {
+    // Generate entire document as one continuous PDF
+    console.log("Generating PDF...");
+    const pdfBlob = await html2pdf().set(opt).from(pdfContent).output("blob");
+    console.log("PDF done, size:", pdfBlob.size);
+
+    // Load into pdf-lib to add page numbers and branding
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const pdfDoc = await PDFDocument.load(await pdfBlob.arrayBuffer());
+    const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    const pages = pdfDoc.getPages();
+    const totalPages = pages.length;
+
+    // Add page numbers and branding to each page
+    pages.forEach((page, index) => {
+      const { width } = page.getSize();
+      const pageNum = index + 1;
+
+      // Add page number on right
+      page.drawText(`Page ${pageNum} of ${totalPages}`, {
+        x: width - 100,
+        y: 15,
+        size: 8,
+        font: helvetica,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+
+      // Add branding on left
+      page.drawText('Insurance Policy Comparison Tool', {
+        x: 22,
+        y: 15,
+        size: 8,
+        font: helvetica,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+    });
+
+    const mergedPdf = pdfDoc;
+
+    // Append source PDFs if available
+    const sourcePdfCount = Object.keys(state.sourcePdfs).length;
     for (let i = 0; i < 3; i++) {
       if (state.sourcePdfs[i]) {
-        const sourcePdf = await PDFDocument.load(state.sourcePdfs[i]);
-        const sourcePages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
-        sourcePages.forEach((page) => mergedPdf.addPage(page));
+        try {
+          // Use slice(0) to create a copy of the ArrayBuffer
+          const sourcePdf = await PDFDocument.load(state.sourcePdfs[i].slice(0));
+          const sourcePages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
+          sourcePages.forEach((page) => mergedPdf.addPage(page));
+        } catch (sourceError) {
+          console.warn(`Could not attach source PDF ${i}:`, sourceError);
+        }
       }
     }
 
@@ -846,17 +1101,237 @@ async function exportComparisonPdf() {
     a.download = opt.filename;
     a.click();
     URL.revokeObjectURL(url);
-    setStatus(`Comparison PDF saved with ${sourcePdfCount} source illustration(s) attached.`);
+
+    if (sourcePdfCount > 0) {
+      setStatus(`PDF saved with ${sourcePdfCount} source illustration(s) attached.`);
+    } else {
+      setStatus("Comparison PDF saved.");
+    }
   } catch (error) {
-    console.error("PDF merge error:", error);
-    setStatus("Error merging PDFs. Saving comparison only.");
-    const url = URL.createObjectURL(comparisonPdfBlob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = opt.filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    console.error("PDF export error:", error);
+    setStatus("Error: " + error.message);
+    alert("PDF Error: " + error.message + "\n\nCheck console for details.");
+  } finally {
+    // Hide container again
+    container.style.left = "-9999px";
+    container.style.position = "absolute";
+    container.style.zIndex = "";
   }
+}
+
+function populatePdfSummaries() {
+  state.options.forEach((option, index) => {
+    const card = document.getElementById(`pdfSummary${index}`);
+    if (!card) return;
+
+    const nameEl = card.querySelector(".pdf-option-name");
+    const values = card.querySelectorAll(".value");
+
+    if (!option) {
+      // Hide empty options completely
+      card.classList.add("hidden");
+      return;
+    }
+
+    card.classList.remove("hidden");
+    nameEl.textContent = option.name || `Option ${index + 1}`;
+
+    const summary = option.summary || {};
+    const totalFirstYearOutlay =
+      (summary.baseAnnualPremium || 0) +
+      (summary.puaPremium || 0) +
+      (summary.termPremium || 0) +
+      (summary.spuaPremium || 0);
+
+    values[0].textContent = formatNumber(summary.initialDeathBenefit);
+    values[1].textContent = formatNumber(summary.baseAnnualPremium);
+    values[2].textContent = formatNumber(summary.puaPremium);
+    values[3].textContent = formatNumber(summary.termPremium);
+    values[4].textContent = formatNumber(totalFirstYearOutlay || option.rows?.[0]?.annualPremium);
+  });
+}
+
+async function renderPdfChart() {
+  console.log("Rendering PDF chart...");
+  const canvas = document.getElementById("pdfChart");
+  if (!canvas) {
+    console.error("PDF chart canvas not found!");
+    return;
+  }
+  const ctx = canvas.getContext("2d");
+
+  // Destroy existing chart if any
+  if (state.pdfChart) {
+    state.pdfChart.destroy();
+    state.pdfChart = null;
+  }
+
+  // Use the same year filter as the main chart
+  const maxYear = parseInt(chartYearMax.value, 10) || 50;
+
+  const labels = [];
+  state.options.forEach((option) => {
+    option?.rows.forEach((row) => labels.push(row.year));
+  });
+  const allLabels = Array.from(new Set(labels)).sort((a, b) => a - b);
+  const uniqueLabels = allLabels.filter(year => year <= maxYear);
+
+  // Update PDF chart disclaimer
+  const pdfChartDisclaimer = document.getElementById("pdfChartDisclaimer");
+  if (pdfChartDisclaimer) {
+    if (allLabels.length > 0 && maxYear < Math.max(...allLabels)) {
+      pdfChartDisclaimer.textContent = `Chart displays years 1 through ${maxYear} only. See detailed projections table for complete data.`;
+      pdfChartDisclaimer.style.display = "block";
+    } else {
+      pdfChartDisclaimer.style.display = "none";
+    }
+  }
+
+  const datasets = state.options
+    .map((option, index) => {
+      if (!option) return null;
+      const data = uniqueLabels.map((year) => {
+        const row = option.rows.find((r) => r.year === year);
+        return row ? getValueWithOverride(index, row, "cashValue") : null;
+      });
+      return {
+        label: option.name || `Option ${index + 1}`,
+        data,
+        borderColor: ["#1fc9e5", "#24ce62", "#35f1ce"][index],
+        backgroundColor: "transparent",
+        spanGaps: true,
+        tension: 0.1,
+        borderWidth: 2,
+      };
+    })
+    .filter(Boolean);
+
+  state.pdfChart = new Chart(ctx, {
+    type: "line",
+    data: { labels: uniqueLabels, datasets },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { position: "bottom", labels: { font: { size: 10 }, boxWidth: 12 } },
+      },
+      scales: {
+        x: {
+          ticks: {
+            callback: function (value, index) {
+              const year = this.getLabelForValue(value);
+              if (year <= 10 || year % 5 === 0) return year;
+              return "";
+            },
+            font: { size: 9 },
+          },
+        },
+        y: {
+          ticks: {
+            callback: (value) => "$" + Number(value).toLocaleString("en-US"),
+            font: { size: 9 },
+          },
+        },
+      },
+    },
+  });
+
+  // Wait for chart to render
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+
+function renderPdfTable() {
+  const container = document.getElementById("pdfTableContainer");
+
+  // Collect all years and map to ages
+  const allYears = new Set();
+  state.options.forEach((option) => {
+    option?.rows.forEach((row) => allYears.add(row.year));
+  });
+  const years = Array.from(allYears).sort((a, b) => a - b);
+
+  // Build columns list based on toggles
+  const columns = [
+    { key: "annualPremium", label: "Premium", show: true },
+    { key: "cashValue", label: "Cash Value", show: true },
+    { key: "deathBenefit", label: "Death Benefit", show: true },
+    { key: "cashValueIncrease", label: "CV Increase", show: toggleCashIncrease.checked },
+    { key: "cashValueEfficiency", label: "CV Efficiency", show: toggleEfficiency.checked },
+    { key: "irr", label: "IRR", show: toggleIrr.checked },
+  ].filter(col => col.show);
+
+  const optionColors = ["option-color-1", "option-color-2", "option-color-3"];
+  const activeOptionCount = state.options.filter(opt => opt !== null).length;
+
+  let html = "<table><thead>";
+  html += "<tr><th class=\"year-header\"></th>";
+  state.options.forEach((option, idx) => {
+    if (!option) return;
+    const name = option.name || `Option ${idx + 1}`;
+    html += `<th colspan="${columns.length}" class="${optionColors[idx]}">${name}</th>`;
+  });
+  html += "</tr>";
+  html += "<tr><th class=\"year-header\">Age</th>";
+  state.options.forEach((option, idx) => {
+    if (!option) return;
+    columns.forEach(col => {
+      html += `<th class="${optionColors[idx]}">${col.label}</th>`;
+    });
+  });
+  html += "</tr></thead><tbody>";
+
+  years.forEach((year) => {
+    // Get age from the first loaded option that has this year
+    let age = year;
+    for (const option of state.options) {
+      if (option) {
+        const row = option.rows.find((r) => r.year === year);
+        if (row && row.age) {
+          age = row.age;
+          break;
+        }
+      }
+    }
+
+    html += `<tr class="pdf-table-row" data-html2pdf-page-break-avoid><td class="year-cell">${age}</td>`;
+    state.options.forEach((option, optionIndex) => {
+      if (!option) return;
+      const row = option.rows.find((r) => r.year === year);
+      const previousRow = option.rows.find((r) => r.year === year - 1);
+
+      columns.forEach(col => {
+        let value = null;
+        let isPercentage = false;
+        let decimals = 0;
+
+        if (row) {
+          if (col.key === "cashValueIncrease") {
+            const currentCV = getValueWithOverride(optionIndex, row, "cashValue");
+            const prevCV = previousRow ? getValueWithOverride(optionIndex, previousRow, "cashValue") : 0;
+            value = currentCV !== null ? currentCV - prevCV : null;
+          } else if (col.key === "cashValueEfficiency") {
+            const cv = getValueWithOverride(optionIndex, row, "cashValue");
+            const outlay = getValueWithOverride(optionIndex, row, "cumulativeOutlay");
+            value = outlay ? cv / outlay : null;
+            isPercentage = true;
+          } else if (col.key === "irr") {
+            value = calculateIRR(optionIndex, row);
+            isPercentage = true;
+            decimals = 2;
+          } else {
+            value = getValueWithOverride(optionIndex, row, col.key);
+          }
+        }
+
+        html += `<td class="${optionColors[optionIndex]}">${formatNumber(value, isPercentage, decimals)}</td>`;
+      });
+    });
+    html += "</tr>";
+  });
+
+  html += "</tbody></table>";
+  container.innerHTML = html;
 }
 
 async function handleSaveComparison() {
@@ -871,7 +1346,7 @@ async function handleSaveComparison() {
       toggles: {
         cashIncrease: toggleCashIncrease.checked,
         efficiency: toggleEfficiency.checked,
-        cashOverCash: toggleCashOverCash.checked,
+        irr: toggleIrr.checked,
       },
     };
 
@@ -910,14 +1385,17 @@ async function handleLoadComparison() {
     if (comparison.toggles) {
       toggleCashIncrease.checked = comparison.toggles.cashIncrease;
       toggleEfficiency.checked = comparison.toggles.efficiency;
-      toggleCashOverCash.checked = comparison.toggles.cashOverCash;
+      toggleIrr.checked = comparison.toggles.irr;
     }
 
     renderAll();
-    // Update status displays
+    // Update status displays and illustration summaries
     for (let i = 0; i < 3; i++) {
       if (state.options[i]) {
         updateOptionStatus(i, `✓ ${state.options[i].name}`, "success");
+        updateIllustrationSummary(i, state.options[i]);
+      } else {
+        updateIllustrationSummary(i, null);
       }
     }
     setStatus(`Loaded comparison: ${comparison.name}`);
@@ -927,4 +1405,10 @@ async function handleLoadComparison() {
   }
 }
 
+// Initialize
 renderAll();
+
+// Hide empty illustration summary cards on load
+for (let i = 0; i < 3; i++) {
+  updateIllustrationSummary(i, state.options[i]);
+}

@@ -18,7 +18,10 @@
         <h1>Insurance Comparison Prototype</h1>
         <p>Upload CSV or carrier illustration PDFs, then compare up to three options side by side.</p>
       </div>
-      <button id="exportPdf" class="primary">Save Comparison as PDF</button>
+      <div class="header-actions">
+        <span id="uploadStatus" class="header-status"></span>
+        <button id="exportPdf" class="primary">Save Comparison as PDF</button>
+      </div>
     </header>
 
     <section class="card">
@@ -112,79 +115,64 @@
         </div>
       </div>
 
-      <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;" />
-      <h3>Or Upload CSV (All 3 Options)</h3>
-      <div class="grid">
-        <label>
-          Upload CSV (template export)
-          <input id="csvInput" type="file" accept=".csv" />
-        </label>
+      <!-- Hidden: CSV and Advanced Options (kept for JS compatibility) -->
+      <div style="display: none;">
+        <input id="csvInput" type="file" accept=".csv" />
+        <button id="parseCsv">Parse CSV</button>
+        <input type="checkbox" id="debugMode" />
+        <input id="lafayetteStart" type="number" value="10" min="1" />
+        <input id="lafayetteEnd" type="number" value="14" min="1" />
+        <input id="lafayetteSummary" type="number" value="16" min="1" />
+        <input id="massSupplemental" type="number" value="13" min="1" />
+        <input id="massReduced" type="number" value="14" min="1" />
+        <input id="massSummary" type="number" value="7" min="1" />
       </div>
-      <div class="actions">
-        <button id="parseCsv">Parse CSV (Loads All 3 Options)</button>
-      </div>
-      <details class="advanced">
-        <summary>Debug Mode</summary>
-        <label style="margin-top: 12px;">
-          <input type="checkbox" id="debugMode" style="width: auto; margin-right: 8px;" />
-          Enable debug mode (shows raw parsing data in console)
-        </label>
-      </details>
-
-      <details class="advanced">
-        <summary>Advanced page ranges</summary>
-        <div class="grid">
-          <label>
-            Lafayette table start page
-            <input id="lafayetteStart" type="number" value="10" min="1" />
-          </label>
-          <label>
-            Lafayette table end page
-            <input id="lafayetteEnd" type="number" value="14" min="1" />
-          </label>
-          <label>
-            Lafayette summary page
-            <input id="lafayetteSummary" type="number" value="16" min="1" />
-          </label>
-          <label>
-            MassMutual supplemental page
-            <input id="massSupplemental" type="number" value="13" min="1" />
-          </label>
-          <label>
-            MassMutual reduced paid-up page
-            <input id="massReduced" type="number" value="14" min="1" />
-          </label>
-          <label>
-            MassMutual summary page
-            <input id="massSummary" type="number" value="7" min="1" />
-          </label>
-        </div>
-        <p class="hint">Use the page number shown in your PDF viewer.</p>
-      </details>
     </section>
 
     <section class="card">
-      <h2>Imported Illustration Summary</h2>
-      <div class="summary-grid">
-        <div>
-          <div class="label">Initial Death Benefit</div>
-          <div id="summaryDeathBenefit">—</div>
+      <h2>Illustration Summaries</h2>
+      <div class="illustration-summaries">
+        <div class="illustration-summary-card" id="illustrationSummary0">
+          <h3>Illustration 1 Summary</h3>
+          <div class="summary-content empty">
+            <p>No illustration loaded</p>
+          </div>
+          <div class="summary-content loaded" style="display: none;">
+            <div class="summary-row"><span class="label">Initial Death Benefit</span><span class="value" data-field="deathBenefit">—</span></div>
+            <div class="summary-row"><span class="label">Base Annual Premium</span><span class="value" data-field="basePremium">—</span></div>
+            <div class="summary-row"><span class="label">PUA Premium</span><span class="value" data-field="puaPremium">—</span></div>
+            <div class="summary-row"><span class="label">Term Rider Premium</span><span class="value" data-field="termPremium">—</span></div>
+            <div class="summary-row"><span class="label">Single Lump Sum PUA</span><span class="value" data-field="spuaPremium">—</span></div>
+            <div class="summary-row total"><span class="label">Total First Year Outlay</span><span class="value" data-field="totalPremium">—</span></div>
+          </div>
         </div>
-        <div>
-          <div class="label">Base Annual Premium</div>
-          <div id="summaryBasePremium">—</div>
+        <div class="illustration-summary-card" id="illustrationSummary1">
+          <h3>Illustration 2 Summary</h3>
+          <div class="summary-content empty">
+            <p>No illustration loaded</p>
+          </div>
+          <div class="summary-content loaded" style="display: none;">
+            <div class="summary-row"><span class="label">Initial Death Benefit</span><span class="value" data-field="deathBenefit">—</span></div>
+            <div class="summary-row"><span class="label">Base Annual Premium</span><span class="value" data-field="basePremium">—</span></div>
+            <div class="summary-row"><span class="label">PUA Premium</span><span class="value" data-field="puaPremium">—</span></div>
+            <div class="summary-row"><span class="label">Term Rider Premium</span><span class="value" data-field="termPremium">—</span></div>
+            <div class="summary-row"><span class="label">Single Lump Sum PUA</span><span class="value" data-field="spuaPremium">—</span></div>
+            <div class="summary-row total"><span class="label">Total First Year Outlay</span><span class="value" data-field="totalPremium">—</span></div>
+          </div>
         </div>
-        <div>
-          <div class="label">PUA Premium</div>
-          <div id="summaryPuaPremium">—</div>
-        </div>
-        <div>
-          <div class="label">Term Rider Premium</div>
-          <div id="summaryTermPremium">—</div>
-        </div>
-        <div>
-          <div class="label">Single Lump Sum PUA</div>
-          <div id="summarySpuaPremium">—</div>
+        <div class="illustration-summary-card" id="illustrationSummary2">
+          <h3>Illustration 3 Summary</h3>
+          <div class="summary-content empty">
+            <p>No illustration loaded</p>
+          </div>
+          <div class="summary-content loaded" style="display: none;">
+            <div class="summary-row"><span class="label">Initial Death Benefit</span><span class="value" data-field="deathBenefit">—</span></div>
+            <div class="summary-row"><span class="label">Base Annual Premium</span><span class="value" data-field="basePremium">—</span></div>
+            <div class="summary-row"><span class="label">PUA Premium</span><span class="value" data-field="puaPremium">—</span></div>
+            <div class="summary-row"><span class="label">Term Rider Premium</span><span class="value" data-field="termPremium">—</span></div>
+            <div class="summary-row"><span class="label">Single Lump Sum PUA</span><span class="value" data-field="spuaPremium">—</span></div>
+            <div class="summary-row total"><span class="label">Total First Year Outlay</span><span class="value" data-field="totalPremium">—</span></div>
+          </div>
         </div>
       </div>
     </section>
@@ -207,16 +195,26 @@
       <div class="chart-area">
         <div class="chart-header">
           <h2>Comparison Chart</h2>
-          <div class="chart-toggles">
-            <label class="chart-toggle-option">
-              <input type="radio" name="chartMetric" value="cashValue" checked />
-              Cash Value
-            </label>
-            <label class="chart-toggle-option">
-              <input type="radio" name="chartMetric" value="deathBenefit" />
-              Death Benefit
-            </label>
+          <div class="chart-controls">
+            <div class="chart-toggles">
+              <label class="chart-toggle-option">
+                <input type="radio" name="chartMetric" value="cashValue" checked />
+                Cash Value
+              </label>
+              <label class="chart-toggle-option">
+                <input type="radio" name="chartMetric" value="deathBenefit" />
+                Death Benefit
+              </label>
+            </div>
+            <div class="chart-year-slider">
+              <span class="slider-label">Years:</span>
+              <input type="range" id="chartYearMax" min="5" max="65" value="65" step="1" />
+              <span id="yearRangeDisplay" class="year-badge">1-65</span>
+            </div>
           </div>
+        </div>
+        <div class="chart-disclaimer" id="chartDisclaimer" style="display: none;">
+          <span>Chart displays years 1 through <span id="disclaimerYears">65</span> only. See full projections in table below.</span>
         </div>
         <div class="chart-container">
           <canvas id="comparisonChart"></canvas>
@@ -231,6 +229,121 @@
         <span class="footer-note">Storage: LocalStorage (Supabase integration ready for phase 2)</span>
       </div>
     </footer>
+
+    <!-- Hidden PDF Export Container -->
+    <div id="pdfExportContainer" class="pdf-export-container">
+      <!-- All content flows continuously -->
+      <div class="pdf-content">
+
+      <!-- Section 1: Summaries, Chart, Talking Points -->
+      <div class="pdf-section pdf-section-1">
+        <div class="pdf-header">
+          <h1>Proposed Insurance Policy Comparison</h1>
+          <p class="pdf-date"></p>
+        </div>
+
+        <div class="pdf-summaries">
+          <div class="pdf-summary-card" id="pdfSummary0">
+            <h3 class="pdf-option-name">Option 1</h3>
+            <div class="pdf-summary-row"><span>Initial Death Benefit:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>Base Annual Premium:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>PUA Premium:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>Term Rider:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>Total First Year Outlay:</span><span class="value total">—</span></div>
+          </div>
+          <div class="pdf-summary-card" id="pdfSummary1">
+            <h3 class="pdf-option-name">Option 2</h3>
+            <div class="pdf-summary-row"><span>Initial Death Benefit:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>Base Annual Premium:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>PUA Premium:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>Term Rider:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>Total First Year Outlay:</span><span class="value total">—</span></div>
+          </div>
+          <div class="pdf-summary-card" id="pdfSummary2">
+            <h3 class="pdf-option-name">Option 3</h3>
+            <div class="pdf-summary-row"><span>Initial Death Benefit:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>Base Annual Premium:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>PUA Premium:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>Term Rider:</span><span class="value">—</span></div>
+            <div class="pdf-summary-row"><span>Total First Year Outlay:</span><span class="value total">—</span></div>
+          </div>
+        </div>
+
+        <div class="pdf-chart-section">
+          <h2>Cash Value Comparison</h2>
+          <p class="pdf-chart-disclaimer" id="pdfChartDisclaimer" style="display: none;"></p>
+          <canvas id="pdfChart" width="900" height="180"></canvas>
+        </div>
+
+        <div class="pdf-talking-points">
+          <h2>Ways to Use Whole Life Insurance</h2>
+          <div class="pdf-points-columns">
+            <div class="pdf-points-column">
+              <h3>Working Years</h3>
+              <ul>
+                <li><strong>Asset Protection</strong> — Creditor protection in many states</li>
+                <li><strong>Tax-Deferred Growth</strong> — Cash value grows without annual taxation</li>
+                <li><strong>Savings Alternative</strong> — Higher long-term returns than traditional savings</li>
+                <li><strong>College Alternatives</strong> — Fund education without affecting financial aid</li>
+                <li><strong>Infinite Banking</strong> — Be your own bank for major purchases</li>
+                <li><strong>Bond Replacement</strong> — Safe money alternative in your portfolio</li>
+              </ul>
+            </div>
+            <div class="pdf-points-column">
+              <h3>Retirement Years</h3>
+              <ul>
+                <li><strong>Volatility Buffer</strong> — Avoid selling assets in down markets</li>
+                <li><strong>Tax-Free Income</strong> — Supplement retirement with policy loans</li>
+                <li><strong>Safe Money Strategy</strong> — Guaranteed values regardless of markets</li>
+                <li><strong>Legacy Planning</strong> — Build intergenerational wealth with tax-free transfer</li>
+                <li><strong>Long-Term Care</strong> — Supplemental coverage options available</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 2: Full Data Table -->
+      <div class="pdf-section pdf-section-2">
+        <h2>Detailed Policy Projections</h2>
+        <div id="pdfTableContainer" class="pdf-table-container"></div>
+      </div>
+
+      <!-- Section 3: Disclaimer -->
+      <div class="pdf-section pdf-section-3 pdf-disclaimer-section">
+        <div class="pdf-disclaimer">
+          <h2>Important Disclosures</h2>
+
+          <div class="disclaimer-section">
+            <h3>For Agent Use Only</h3>
+            <p>This comparison template is intended for use by licensed insurance agents and financial professionals only. It is not intended for distribution to or use by the general public.</p>
+          </div>
+
+          <div class="disclaimer-section">
+            <h3>Reference Materials Required</h3>
+            <p>This comparison is provided as a summary reference tool. Please reference all original carrier illustrations for complete policy details, guarantees, and disclosures. This comparison is not valid without the accompanying carrier illustrations.</p>
+          </div>
+
+          <div class="disclaimer-section">
+            <h3>Data Verification</h3>
+            <p>All values displayed in this comparison have been imported from carrier illustration documents. Please confirm all inputs against the original carrier illustrations to ensure accuracy. Any manual edits or overrides should be verified independently.</p>
+          </div>
+
+          <div class="disclaimer-section important">
+            <h3>General Disclaimer</h3>
+            <p>This document is for informational and educational purposes only. Nothing contained herein constitutes financial, tax, legal, or investment advice. Insurance products involve risk and may not be suitable for all individuals.</p>
+            <p>Please consult with your qualified tax advisor, legal counsel, or financial professional before making any financial decisions. The information provided does not take into account your specific objectives, financial situation, or needs.</p>
+            <p>Policy values shown are based on current illustrations and are subject to change. Non-guaranteed values are based on assumptions that may not be realized. Guaranteed values are backed by the claims-paying ability of the issuing insurance company.</p>
+          </div>
+
+          <div class="disclaimer-footer">
+            <p>Generated on <span class="disclaimer-date"></span></p>
+          </div>
+        </div>
+      </div>
+
+      </div><!-- end pdf-content -->
+    </div>
 
     <script src="./app.js"></script>
   </body>
