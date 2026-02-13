@@ -27,6 +27,7 @@ const state = {
   pdfChart: null,
   sourcePdfs: {},
   debug: false,
+  tableYearCap: null, // null = show all years, number = cap at this year
 };
 
 function debugLog(...args) {
@@ -75,6 +76,8 @@ const illustrationSummaryCards = [
 
 const comparisonTable = document.getElementById("comparisonTable");
 const resetOverrides = document.getElementById("resetOverrides");
+const matchYearsBtn = document.getElementById("matchYears");
+const showAllYearsBtn = document.getElementById("showAllYears");
 const exportPdf = document.getElementById("exportPdf");
 const saveComparison = document.getElementById("saveComparison");
 const loadComparison = document.getElementById("loadComparison");
@@ -173,6 +176,38 @@ resetOverrides.addEventListener("click", () => {
   state.overrides = {};
   renderAll();
 });
+
+matchYearsBtn.addEventListener("click", () => {
+  // Find the minimum max year across all loaded options
+  const loadedOptions = state.options.filter(opt => opt !== null);
+  if (loadedOptions.length < 2) {
+    return; // Need at least 2 options to match
+  }
+
+  const maxYears = loadedOptions.map(opt => {
+    const years = opt.rows.map(r => r.year);
+    return Math.max(...years);
+  });
+
+  state.tableYearCap = Math.min(...maxYears);
+  renderTable();
+  renderChart();
+});
+
+showAllYearsBtn.addEventListener("click", () => {
+  // Set cap to the maximum year across all options
+  const loadedOptions = state.options.filter(opt => opt !== null);
+  if (loadedOptions.length === 0) return;
+
+  const maxYears = loadedOptions.map(opt => {
+    const years = opt.rows.map(r => r.year);
+    return Math.max(...years);
+  });
+
+  state.tableYearCap = Math.max(...maxYears);
+  renderTable();
+  renderChart();
+});
 exportPdf.addEventListener("click", exportComparisonPdf);
 saveComparison.addEventListener("click", handleSaveComparison);
 loadComparison.addEventListener("click", handleLoadComparison);
@@ -225,38 +260,58 @@ function setOverride(optionIndex, year, field, value) {
 }
 
 async function handlePdfParse(optionIndex) {
+  console.log("handlePdfParse called for option:", optionIndex);
   const pdfInput = pdfInputs[optionIndex];
   const carrierSelect = carrierSelects[optionIndex];
   const reportNameInput = reportNameInputs[optionIndex];
 
+  console.log("pdfInput:", pdfInput);
+  console.log("pdfInput.files:", pdfInput?.files);
+  console.log("carrierSelect:", carrierSelect);
+  console.log("carrierSelect.value:", carrierSelect?.value);
+
   if (!pdfInput.files[0]) {
     updateOptionStatus(optionIndex, "Please select a PDF illustration.", "error");
+    console.log("No file selected");
     return;
   }
   const carrier = carrierSelect.value;
   if (!carrier) {
     updateOptionStatus(optionIndex, "Select a carrier before parsing.", "error");
+    console.log("No carrier selected");
     return;
   }
   const name = reportNameInput.value || pdfInput.files[0].name;
+  console.log("Parsing PDF:", name, "Carrier:", carrier);
   updateOptionStatus(optionIndex, "Parsing PDF...", "loading");
 
+  console.log("Loading PDF file...");
   const arrayBuffer = await pdfInput.files[0].arrayBuffer();
+  console.log("ArrayBuffer size:", arrayBuffer.byteLength);
+
   const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+  console.log("PDF loaded, pages:", pdfDoc.numPages);
 
   // Store a copy of the ArrayBuffer to prevent detachment issues
   state.sourcePdfs[optionIndex] = arrayBuffer.slice(0);
 
   if (carrier === "lafayette") {
+    console.log("Using Lafayette parser...");
     const rows = await parseLafayette(pdfDoc);
     const summary = await extractLafayetteSummary(pdfDoc, rows);
     setOption(optionIndex, name, carrier, rows, summary, pdfInput.files[0].name);
     updateOptionStatus(optionIndex, `✓ ${name}`, "success");
   } else if (carrier === "massmutual") {
+    console.log("Using MassMutual parser...");
     const rows = await parseMassMutual(pdfDoc);
+    console.log("MassMutual rows parsed:", rows.length);
     const summary = await extractMassMutualSummary(pdfDoc, rows);
+    console.log("MassMutual summary:", summary);
     setOption(optionIndex, name, carrier, rows, summary, pdfInput.files[0].name);
     updateOptionStatus(optionIndex, `✓ ${name}`, "success");
+  } else {
+    console.log("Unknown carrier:", carrier);
+    updateOptionStatus(optionIndex, "Unknown carrier", "error");
   }
 }
 
@@ -423,24 +478,81 @@ function updateIllustrationSummary(optionIndex, option) {
   titleEl.textContent = option.name || `Illustration ${optionIndex + 1} Summary`;
 
   const summary = option.summary || {};
+  const isMassMutual = summary.carrier === "massmutual" || option.carrier === "massmutual";
+
+  // Update labels based on carrier
+  const setLabel = (field, label) => {
+    const row = loadedContent.querySelector(`[data-field="${field}"]`)?.closest(".summary-row");
+    if (row) {
+      const labelEl = row.querySelector(".label");
+      if (labelEl) labelEl.innerHTML = label;
+    }
+  };
+
+  if (isMassMutual) {
+    setLabel("puaPremium", "PUA Premium (ALIR)");
+    setLabel("spuaPremium", "Single PUA (ALIR Unscheduled)");
+    setLabel("termPremium", "Term Rider (LISR)*");
+  } else {
+    // Lafayette / default labels
+    setLabel("puaPremium", "PUA Premium");
+    setLabel("spuaPremium", "Single Lump Sum PUA");
+    setLabel("termPremium", "Term Rider Premium");
+  }
+
+  // Update values and make them editable
+  const setValue = (field, value, summaryKey) => {
+    const el = loadedContent.querySelector(`[data-field="${field}"]`);
+    if (el) {
+      el.textContent = formatNumber(value);
+      el.contentEditable = "true";
+      el.dataset.optionIndex = optionIndex;
+      el.dataset.summaryKey = summaryKey;
+      el.classList.add("editable-summary");
+
+      // Remove old listener and add new one
+      el.onblur = function() {
+        const newValue = parseNumber(this.textContent);
+        if (newValue !== null && state.options[optionIndex]) {
+          state.options[optionIndex].summary[summaryKey] = newValue;
+          // Recalculate total
+          updateIllustrationSummary(optionIndex, state.options[optionIndex]);
+        }
+      };
+    }
+  };
+
+  setValue("deathBenefit", summary.initialDeathBenefit, "initialDeathBenefit");
+  setValue("basePremium", summary.baseAnnualPremium, "baseAnnualPremium");
+  setValue("puaPremium", summary.puaPremium, "puaPremium");
+  setValue("termPremium", summary.termPremium, "termPremium");
+  setValue("spuaPremium", summary.spuaPremium, "spuaPremium");
+
+  // Calculate and display total (not editable)
   const totalFirstYearOutlay =
     (summary.baseAnnualPremium || 0) +
     (summary.puaPremium || 0) +
     (summary.termPremium || 0) +
     (summary.spuaPremium || 0);
 
-  // Update values
-  const setValue = (field, value) => {
-    const el = loadedContent.querySelector(`[data-field="${field}"]`);
-    if (el) el.textContent = formatNumber(value);
-  };
+  const totalEl = loadedContent.querySelector(`[data-field="totalPremium"]`);
+  if (totalEl) {
+    totalEl.textContent = formatNumber(totalFirstYearOutlay || option.rows?.[0]?.annualPremium);
+    totalEl.contentEditable = "false"; // Total is calculated, not editable
+  }
 
-  setValue("deathBenefit", summary.initialDeathBenefit);
-  setValue("basePremium", summary.baseAnnualPremium);
-  setValue("puaPremium", summary.puaPremium);
-  setValue("termPremium", summary.termPremium);
-  setValue("spuaPremium", summary.spuaPremium);
-  setValue("totalPremium", totalFirstYearOutlay || option.rows?.[0]?.annualPremium);
+  // Add/remove LISR footnote for MassMutual
+  let footnote = card.querySelector(".lisr-footnote");
+  if (isMassMutual && summary.termPremium) {
+    if (!footnote) {
+      footnote = document.createElement("p");
+      footnote.className = "lisr-footnote";
+      footnote.innerHTML = "<small>*LISR is a term blend rider with a reducing ART. This does not represent the minimum cost, as a portion of this premium builds cash value similar to the PUA/ALIR.</small>";
+      loadedContent.appendChild(footnote);
+    }
+  } else if (footnote) {
+    footnote.remove();
+  }
 }
 
 async function extractLinesFromPage(pdfDoc, pageNumber) {
@@ -591,66 +703,54 @@ async function extractLafayetteSummary(pdfDoc, rows) {
 }
 
 async function parseMassMutual(pdfDoc) {
-  debugLog('Starting MassMutual parsing...');
-  const supplementalPage = parseNumber(massSupplemental.value) || 13;
-  const reducedPaidUpPage = parseNumber(massReduced.value) || 14;
-  debugLog(`MassMutual supplemental page: ${supplementalPage}, reduced paid-up: ${reducedPaidUpPage}`);
+  console.log('Starting MassMutual parsing...');
+  console.log(`PDF has ${pdfDoc.numPages} pages`);
   const rows = [];
 
-  debugLog('Parsing supplemental page (active premium years)...');
-  const supplementalLines = await extractLinesFromPage(pdfDoc, supplementalPage);
-  supplementalLines.forEach((line, lineIndex) => {
-    if (!/^\d+\s+\d+/.test(line)) {
-      debugLog(`  Line ${lineIndex + 1}: Skipped (doesn't match pattern)`);
-      return;
-    }
+  // Parse page 19 (Supplemental Values - active premium years)
+  // Column mapping based on user input:
+  // [0]=Year, [1]=Age, [2]=Annual Premium, [7]=Cash Value, [10]=Death Benefit
+  console.log('Parsing page 19 (active premium years)...');
+  const page19Data = await extractLinesFromPage(pdfDoc, 19);
+  page19Data.forEach((line, lineIndex) => {
+    if (!/^\d+\s+\d+/.test(line)) return;
     const tokens = parseNumberTokens(line);
-    debugLog(`  Line ${lineIndex + 1}: Found ${tokens.length} tokens:`, tokens);
+    if (tokens.length < 11) return;
 
-    if (tokens.length < 11) {
-      debugLog(`    Skipped: Not enough tokens (need 11+)`);
-      return;
-    }
     const year = parseNumber(tokens[0]);
     const age = parseNumber(tokens[1]);
     const annualPremium = parseNumber(tokens[2]);
     const cashValue = parseNumber(tokens[7]);
     const deathBenefit = parseNumber(tokens[10]);
-    if (!year || !age) {
-      debugLog(`    Skipped: Missing year or age`);
-      return;
-    }
+
+    if (!year || !age || year > 100) return;
 
     const row = { year, age, annualPremium, cashValue, deathBenefit };
-    debugLog(`    ✓ Parsed:`, row);
+    console.log(`  Year ${year}: Premium=${annualPremium}, CV=${cashValue}, DB=${deathBenefit}`);
     rows.push(row);
   });
 
-  debugLog('Parsing reduced paid-up page...');
-  const reducedLines = await extractLinesFromPage(pdfDoc, reducedPaidUpPage);
-  reducedLines.forEach((line, lineIndex) => {
-    if (!/^\d+\s+\d+/.test(line)) {
-      debugLog(`  Line ${lineIndex + 1}: Skipped (doesn't match pattern)`);
-      return;
-    }
+  // Parse page 20 (Reduced Paid-Up - continuation with $0 premiums)
+  // Column mapping: [0]=Year, [1]=Age, Premium=0, [6]=Cash Value, [7]=Death Benefit
+  console.log('Parsing page 20 (reduced paid-up years)...');
+  const page20Data = await extractLinesFromPage(pdfDoc, 20);
+  page20Data.forEach((line, lineIndex) => {
+    if (!/^\d+\s+\d+/.test(line)) return;
     const tokens = parseNumberTokens(line);
-    debugLog(`  Line ${lineIndex + 1}: Found ${tokens.length} tokens:`, tokens);
+    if (tokens.length < 8) return;
 
-    if (tokens.length < 8) {
-      debugLog(`    Skipped: Not enough tokens (need 8+)`);
-      return;
-    }
     const year = parseNumber(tokens[0]);
     const age = parseNumber(tokens[1]);
+    // Use last two columns for cash value and death benefit
     const cashValue = parseNumber(tokens[tokens.length - 2]);
     const deathBenefit = parseNumber(tokens[tokens.length - 1]);
-    if (!year || !age) {
-      debugLog(`    Skipped: Missing year or age`);
-      return;
-    }
+
+    if (!year || !age || year > 100) return;
+    // Skip if we already have this year from page 19
+    if (rows.some(r => r.year === year)) return;
 
     const row = { year, age, annualPremium: 0, cashValue, deathBenefit };
-    debugLog(`    ✓ Parsed:`, row);
+    console.log(`  Year ${year}: Premium=0, CV=${cashValue}, DB=${deathBenefit}`);
     rows.push(row);
   });
 
@@ -660,30 +760,71 @@ async function parseMassMutual(pdfDoc) {
 }
 
 async function extractMassMutualSummary(pdfDoc, rows) {
-  const summaryPage = parseNumber(massSummary.value) || 7;
-  const lines = await extractLinesFromPage(pdfDoc, summaryPage);
-  const fullText = lines.join(" ");
+  console.log("Extracting MassMutual summary from page 8...");
+  const page8Lines = await extractLinesFromPage(pdfDoc, 8);
+  const fullText = page8Lines.join(" ");
+
   const summary = {
+    carrier: "massmutual",
     initialDeathBenefit: rows?.[0]?.deathBenefit ?? null,
     baseAnnualPremium: null,
-    puaPremium: 0,
-    termPremium: 0,
-    spuaPremium: 0,
+    puaPremium: null,        // ALIR Scheduled
+    spuaPremium: null,       // ALIR Unscheduled (lump sum)
+    termPremium: null,       // LISR
   };
 
+  // Base Premium $12,080.00
   summary.baseAnnualPremium = parseNumber(
     (fullText.match(/Base Premium\s*\$([0-9,]+\.\d{2})/) || [])[1]
   );
-  summary.initialDeathBenefit = parseNumber(
-    (fullText.match(/Initial Death Benefit:\s*\$([0-9,]+\.\d{2})/) || [])[1]
+
+  // ALIR Scheduled Purchase Payment $16,914.00 (this is their PUA)
+  summary.puaPremium = parseNumber(
+    (fullText.match(/ALIR[^$]*Scheduled[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
   );
+
+  // ALIR Unscheduled First Year Lump Sum $86,000.00 (single PUA)
+  summary.spuaPremium = parseNumber(
+    (fullText.match(/ALIR[^$]*Unscheduled[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
+  );
+
+  // LISR Premium First Year $10,006.37 (term blend rider)
+  summary.termPremium = parseNumber(
+    (fullText.match(/LISR Premium[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
+  );
+
+  // Initial Death Benefit from first row
+  summary.initialDeathBenefit = rows?.[0]?.deathBenefit ?? null;
+
+  console.log("MassMutual summary extracted:", summary);
   return summary;
 }
 
 function renderAll() {
   updateYearSlider();
+  autoMatchYears(); // Auto-cap to shortest option by default
   renderTable();
   renderChart();
+}
+
+function autoMatchYears() {
+  const loadedOptions = state.options.filter(opt => opt !== null);
+  if (loadedOptions.length < 2) {
+    // Only one or no options, no need to cap
+    if (loadedOptions.length === 1) {
+      const years = loadedOptions[0].rows.map(r => r.year);
+      state.tableYearCap = Math.max(...years);
+    }
+    return;
+  }
+
+  // Find the minimum max year across all loaded options
+  const maxYears = loadedOptions.map(opt => {
+    const years = opt.rows.map(r => r.year);
+    return Math.max(...years);
+  });
+
+  state.tableYearCap = Math.min(...maxYears);
 }
 
 function updateYearSlider() {
@@ -720,7 +861,22 @@ function renderTable() {
   state.options.forEach((option) => {
     option?.rows.forEach((row) => allYears.add(row.year));
   });
-  const years = Array.from(allYears).sort((a, b) => a - b);
+  let years = Array.from(allYears).sort((a, b) => a - b);
+
+  // Apply year cap if set
+  if (state.tableYearCap !== null) {
+    years = years.filter(year => year <= state.tableYearCap);
+  }
+
+  // Get only loaded options with their original indices
+  const loadedOptions = state.options
+    .map((option, idx) => ({ option, idx }))
+    .filter(({ option }) => option !== null);
+
+  if (loadedOptions.length === 0) {
+    comparisonTable.innerHTML = "<p style='color: #9ca3af; text-align: center;'>Upload and parse illustrations to see comparison table.</p>";
+    return;
+  }
 
   const metrics = [
     { key: "age", label: "Age" },
@@ -746,17 +902,17 @@ function renderTable() {
   // Option color classes
   const optionColors = ["option-color-1", "option-color-2", "option-color-3"];
 
-  // Header row 1: Option names with proper colspan (including Year column)
+  // Header row 1: Option names with proper colspan (only loaded options)
   let html = "<table><thead><tr><th class=\"year-header\"></th>";
-  state.options.forEach((option, idx) => {
-    const name = option?.name || `Option ${idx + 1}`;
+  loadedOptions.forEach(({ option, idx }) => {
+    const name = option.name || `Option ${idx + 1}`;
     html += `<th colspan="${totalMetrics.length}" class="option-header ${optionColors[idx]}">${name}</th>`;
   });
   html += "</tr>";
 
-  // Header row 2: Year + metric labels for each option
+  // Header row 2: Year + metric labels for each loaded option
   html += "<tr><th class=\"year-header\">Year</th>";
-  state.options.forEach((option, idx) => {
+  loadedOptions.forEach(({ idx }) => {
     totalMetrics.forEach((metric) => {
       html += `<th class="${optionColors[idx]}">${metric.label}</th>`;
     });
@@ -765,9 +921,9 @@ function renderTable() {
 
   years.forEach((year) => {
     html += `<tr><td class="year-cell">${year}</td>`;
-    state.options.forEach((option, optionIndex) => {
-      const row = option?.rows.find((r) => r.year === year);
-      const previousRow = option?.rows.find((r) => r.year === year - 1);
+    loadedOptions.forEach(({ option, idx: optionIndex }) => {
+      const row = option.rows.find((r) => r.year === year);
+      const previousRow = option.rows.find((r) => r.year === year - 1);
       totalMetrics.forEach((metric) => {
         const value = getMetricValue(optionIndex, row, previousRow, metric.key);
         const overrideKey = row
@@ -961,14 +1117,6 @@ function renderChart() {
       scales: {
         x: {
           ticks: {
-            callback: function(value, index) {
-              const year = this.getLabelForValue(value);
-              // Show years 1-10, then every 5 years
-              if (year <= 10 || year % 5 === 0) {
-                return year;
-              }
-              return '';
-            },
             autoSkip: false,
             maxRotation: 0,
             minRotation: 0,
@@ -1084,7 +1232,10 @@ async function exportComparisonPdf() {
       if (state.sourcePdfs[i]) {
         try {
           // Use slice(0) to create a copy of the ArrayBuffer
-          const sourcePdf = await PDFDocument.load(state.sourcePdfs[i].slice(0));
+          // Use ignoreEncryption for carrier PDFs that are copy-protected
+          const sourcePdf = await PDFDocument.load(state.sourcePdfs[i].slice(0), {
+            ignoreEncryption: true,
+          });
           const sourcePages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
           sourcePages.forEach((page) => mergedPdf.addPage(page));
         } catch (sourceError) {

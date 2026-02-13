@@ -321,6 +321,37 @@ button.primary:hover {
   font-size: 1.1rem;
 }
 
+.lisr-footnote {
+  margin: 12px 0 0;
+  padding: 10px;
+  background: rgba(255, 193, 7, 0.1);
+  border-left: 3px solid #ffc107;
+  border-radius: 4px;
+}
+
+.lisr-footnote small {
+  color: #9ca3af;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.editable-summary {
+  cursor: text;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.editable-summary:hover {
+  background: rgba(31, 201, 229, 0.1);
+}
+
+.editable-summary:focus {
+  outline: none;
+  background: rgba(31, 201, 229, 0.2);
+  box-shadow: 0 0 0 2px rgba(31, 201, 229, 0.3);
+}
+
 @media (max-width: 900px) {
   .illustration-summaries {
     flex-direction: column;
@@ -360,6 +391,25 @@ button.primary:hover {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.table-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.table-controls button.secondary {
+  background: transparent;
+  border: 1px solid #374151;
+  color: #9ca3af;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+.table-controls button.secondary:hover {
+  border-color: #1fc9e5;
+  color: #1fc9e5;
 }
 
 table {
