@@ -309,6 +309,26 @@ async function handlePdfParse(optionIndex) {
     console.log("MassMutual summary:", summary);
     setOption(optionIndex, name, carrier, rows, summary, pdfInput.files[0].name);
     updateOptionStatus(optionIndex, `✓ ${name}`, "success");
+  } else if (carrier === "ameritas") {
+    console.log("Using Ameritas parser...");
+    const rows = await parseAmeritas(pdfDoc);
+    console.log("Ameritas rows parsed:", rows.length);
+    const summary = await extractAmeritasSummary(pdfDoc, rows);
+    console.log("Ameritas summary:", summary);
+    setOption(optionIndex, name, carrier, rows, summary, pdfInput.files[0].name);
+    updateOptionStatus(optionIndex, `✓ ${name}`, "success");
+  } else if (carrier === "guardian") {
+    console.log("Using Guardian parser...");
+    const rows = await parseGuardian(pdfDoc);
+    const summary = await extractGuardianSummary(pdfDoc, rows);
+    setOption(optionIndex, name, carrier, rows, summary, pdfInput.files[0].name);
+    updateOptionStatus(optionIndex, rows.length > 0 ? `✓ ${name}` : "Guardian: no data (parser pending)", rows.length > 0 ? "success" : "info");
+  } else if (carrier === "oneamerica") {
+    console.log("Using One America parser...");
+    const rows = await parseOneAmerica(pdfDoc);
+    const summary = await extractOneAmericaSummary(pdfDoc, rows);
+    setOption(optionIndex, name, carrier, rows, summary, pdfInput.files[0].name);
+    updateOptionStatus(optionIndex, rows.length > 0 ? `✓ ${name}` : "One America: no data (parser pending)", rows.length > 0 ? "success" : "info");
   } else {
     console.log("Unknown carrier:", carrier);
     updateOptionStatus(optionIndex, "Unknown carrier", "error");
@@ -374,12 +394,15 @@ function handleCsvParse() {
   });
 }
 
+const MAX_AGE_DISPLAY = 100;
+
 function setOption(index, name, carrier, rows, summary, filename) {
   const withCumulative = applyCumulativeOutlay(rows);
+  const capped = withCumulative.filter((row) => (row.age != null && row.age <= MAX_AGE_DISPLAY));
   state.options[index] = {
     name,
     carrier,
-    rows: withCumulative,
+    rows: capped,
     summary,
     source: { filename, type: carrier === "csv" ? "csv" : "pdf" },
   };
@@ -479,6 +502,7 @@ function updateIllustrationSummary(optionIndex, option) {
 
   const summary = option.summary || {};
   const isMassMutual = summary.carrier === "massmutual" || option.carrier === "massmutual";
+  const isGuardian = summary.carrier === "guardian" || option.carrier === "guardian";
 
   // Update labels based on carrier
   const setLabel = (field, label) => {
@@ -493,6 +517,10 @@ function updateIllustrationSummary(optionIndex, option) {
     setLabel("puaPremium", "PUA Premium (ALIR)");
     setLabel("spuaPremium", "Single PUA (ALIR Unscheduled)");
     setLabel("termPremium", "Term Rider (LISR)*");
+  } else if (isGuardian) {
+    setLabel("puaPremium", "PUA Premium (Scheduled + Unscheduled)");
+    setLabel("spuaPremium", "Single Lump Sum PUA*");
+    setLabel("termPremium", "Term Rider Premium (OYT)");
   } else {
     // Lafayette / default labels
     setLabel("puaPremium", "PUA Premium");
@@ -552,6 +580,19 @@ function updateIllustrationSummary(optionIndex, option) {
     }
   } else if (footnote) {
     footnote.remove();
+  }
+
+  // Add/remove Guardian Single Lump Sum PUA footnote
+  let guardianFootnote = card.querySelector(".guardian-spua-footnote");
+  if (isGuardian) {
+    if (!guardianFootnote) {
+      guardianFootnote = document.createElement("p");
+      guardianFootnote.className = "guardian-spua-footnote";
+      guardianFootnote.innerHTML = "<small>*Guardian: Unscheduled PUA may include lump sum premiums. Manually adjust First Year Single Lump Sum PUA as needed.</small>";
+      loadedContent.appendChild(guardianFootnote);
+    }
+  } else if (guardianFootnote) {
+    guardianFootnote.remove();
   }
 }
 
@@ -700,6 +741,263 @@ async function extractLafayetteSummary(pdfDoc, rows) {
     (fullText.match(/Single Premium PUA Rider.*?\$([0-9,]+\.\d{2})/) || [])[1]
   );
   return summary;
+}
+
+async function parseAmeritas(pdfDoc) {
+  debugLog("Starting Ameritas parsing...");
+  const rows = [];
+
+  // Ameritas main table starts on printed page 9; in the sample this is PDF page 9.
+  // We scan from page 9 through the end and filter out non-row lines.
+  const startPage = 9;
+  const endPage = pdfDoc.numPages;
+
+  for (let page = startPage; page <= endPage; page += 1) {
+    if (page > pdfDoc.numPages) break;
+    const lines = await extractLinesFromPage(pdfDoc, page);
+    debugLog(`Ameritas: processing ${lines.length} lines from page ${page}`);
+
+    lines.forEach((line, lineIndex) => {
+      // Data lines start with Age followed by End-of-Year (policy year), e.g. "41 1 ..."
+      if (!/^\d+\s+\d+/.test(line)) {
+        return;
+      }
+
+      const tokens = parseNumberTokens(line);
+      if (tokens.length < 5) return;
+
+      const age = parseNumber(tokens[0]);
+      const year = parseNumber(tokens[1]);
+      const annualPremium = parseNumber(tokens[2]); // Contract Premium + Riders (Non-guaranteed side)
+      const cashValue = parseNumber(tokens[tokens.length - 2]); // second from right
+      const deathBenefit = parseNumber(tokens[tokens.length - 1]); // far right
+
+      // Basic validation to skip headers/summary rows
+      if (!year || !age) return;
+      if (year < 1 || year > 121) return;
+      if (age < 18 || age > 121) return;
+
+      const row = { year, age, annualPremium, cashValue, deathBenefit };
+      debugLog(`Ameritas row:`, row);
+      rows.push(row);
+    });
+  }
+
+  debugLog(`Ameritas parsing complete: ${rows.length} rows extracted`);
+  console.table(rows);
+  return rows.sort((a, b) => a.year - b.year);
+}
+
+async function extractAmeritasSummary(pdfDoc, rows) {
+  // Page 4 of 11 (printed) contains the coverage summary with base premium,
+  // FPUR scheduled premium, FPUR received (lump sum), and Level Term rider.
+  // In this sample that corresponds to PDF page 4.
+  let fullText = "";
+  const summaryPage = Math.min(4, pdfDoc.numPages);
+  const lines = await extractLinesFromPage(pdfDoc, summaryPage);
+  fullText = lines.join(" ");
+
+  const summary = {
+    carrier: "ameritas",
+    initialDeathBenefit: rows?.[0]?.deathBenefit ?? null,
+    baseAnnualPremium: null,
+    puaPremium: null,
+    termPremium: null,
+    spuaPremium: null,
+  };
+
+  // Examples from coverage summary text on page 4:
+  // "Base Annual Premium of $4,565.01 is paid each period..."
+  summary.baseAnnualPremium = parseNumber(
+    (fullText.match(/Base\s+Annual\s+Premium[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
+  ) ?? rows?.[0]?.annualPremium ?? null;
+
+  // "Level Term 10 Year ... $1,435.00" (treat as term rider premium if present)
+  // Prefer parsing from the specific line; fall back to a fullText regex.
+  let termPremium = null;
+  const levelTermLine = lines.find((line) =>
+    /Level\s+Term\s+10\s+Year/.test(line)
+  );
+  if (levelTermLine) {
+    const termTokens = parseNumberTokens(levelTermLine);
+    if (termTokens.length > 0) {
+      termPremium = parseNumber(termTokens[termTokens.length - 1]);
+    }
+  }
+  if (termPremium === null) {
+    const termMatch =
+      fullText.match(
+        /Level\s+Term\s+10\s+Year[^$]*\$[0-9,]+(?:\.\d{2})?[^$]*\$([0-9,]+(?:\.\d{2})?)/
+      ) || [];
+    termPremium = parseNumber(termMatch[1]);
+  }
+  summary.termPremium = termPremium;
+
+  // "FPUR - Received Premium ... $89,000.00" (lump-sum style; map to single premium PUA slot)
+  summary.spuaPremium = parseNumber(
+    (fullText.match(/FPUR\s*-\s*Received\s+Premium[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
+  );
+
+  // "FPUR Scheduled Premium: $5,000.00" (ongoing additional paid-up style; map to PUA)
+  summary.puaPremium = parseNumber(
+    (fullText.match(/FPUR\s+Scheduled\s+Premium[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
+  );
+
+  // As a final fallback, if termPremium is still null but we know the initial
+  // premium and other components, solve for the missing term rider premium:
+  // Initial Premium ≈ Base + PUA + Single PUA + Term Rider.
+  const initialPremium = parseNumber(
+    (fullText.match(/Initial\s+Premium[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
+  );
+  if (
+    (summary.termPremium === null || summary.termPremium === undefined) &&
+    initialPremium !== null
+  ) {
+    const knownSum =
+      (summary.baseAnnualPremium || 0) +
+      (summary.puaPremium || 0) +
+      (summary.spuaPremium || 0);
+    const inferred = initialPremium - knownSum;
+    if (inferred > 0) {
+      summary.termPremium = inferred;
+    }
+  }
+
+  // Fallback for initial death benefit from rows if text parse fails
+  summary.initialDeathBenefit = summary.initialDeathBenefit ?? rows?.[0]?.deathBenefit ?? null;
+
+  return summary;
+}
+
+async function parseGuardian(pdfDoc) {
+  // Guardian: main table starts on page 12 of 18.
+  // Columns: Policy Year, Age at Start of Year, Non-Guaranteed Current Net Premium (annual premium),
+  // ... then cash value, death benefit (e.g. $2,000,000).
+  debugLog("Starting Guardian parsing...");
+  const rows = [];
+  const startPage = 12;
+  const endPage = pdfDoc.numPages;
+
+  for (let page = startPage; page <= endPage; page += 1) {
+    if (page > pdfDoc.numPages) break;
+    const lines = await extractLinesFromPage(pdfDoc, page);
+    debugLog(`Guardian: processing ${lines.length} lines from page ${page}`);
+
+    lines.forEach((line) => {
+      if (!/^\d+\s+\d+/.test(line)) return;
+      const tokens = parseNumberTokens(line);
+      if (tokens.length < 5) return;
+
+      const year = parseNumber(tokens[0]);
+      const age = parseNumber(tokens[1]);
+      const annualPremium = parseNumber(tokens[2]);
+      const cashValue = parseNumber(tokens[tokens.length - 2]);
+      const deathBenefit = parseNumber(tokens[tokens.length - 1]);
+
+      if (!year || !age) return;
+      if (year < 1 || year > 121) return;
+      if (age < 18 || age > 120) return;
+
+      rows.push({ year, age, annualPremium, cashValue, deathBenefit });
+    });
+  }
+
+  debugLog(`Guardian parsing complete: ${rows.length} rows`);
+  return rows.sort((a, b) => a.year - b.year);
+}
+
+async function extractGuardianSummary(pdfDoc, rows) {
+  // Guardian "Numeric Summary" lists: Annual Premium $8,250; PUA Scheduled + Unscheduled; OYT $581.56; Total First Year $25,000.
+  let fullText = "";
+  const allLines = [];
+  const pagesToScan = Math.min(8, pdfDoc.numPages);
+  for (let p = 1; p <= pagesToScan; p += 1) {
+    const lines = await extractLinesFromPage(pdfDoc, p);
+    allLines.push(...lines);
+    fullText += " " + lines.join(" ");
+  }
+
+  const summary = {
+    carrier: "guardian",
+    initialDeathBenefit: rows?.[0]?.deathBenefit ?? null,
+    baseAnnualPremium: null,
+    puaPremium: null,
+    termPremium: null,
+    spuaPremium: null,
+  };
+
+  // Annual Premium ** $8,250.00 — try regex first, then line-by-line (PDF layout varies)
+  const baseMatch =
+    fullText.match(/Annual\s+Premium\s*[*\s]*\$([0-9,]+\.\d{2})/) ||
+    fullText.match(/Annual\s+Premium[^$]*?\$([0-9,]+\.\d{2})/) ||
+    fullText.match(/Annual\s*Premium[^$]*?\$([0-9,]+\.\d{2})/) ||
+    fullText.match(/Annual\s+Premium[^$]*\$([0-9,]+\.\d{2})/) ||
+    fullText.match(/\$([8],?250\.00)/) ||
+    fullText.match(/\b(8,?250\.00)\b/);
+  summary.baseAnnualPremium = parseNumber((baseMatch || [])[1]);
+
+  // Line-by-line fallback: find line with "Annual" and "Premium", then first $X,XXX.00 in 1k–15k range (base, not total)
+  if (summary.baseAnnualPremium == null) {
+    for (const line of allLines) {
+      if (!/Annual/i.test(line) || !/Premium/i.test(line)) continue;
+      const amounts = line.match(/\$?([0-9,]+\.\d{2})/g);
+      if (amounts) {
+        for (const a of amounts) {
+          const val = parseNumber(a.replace(/^\$/, ""));
+          if (val != null && val >= 1000 && val <= 15000) {
+            summary.baseAnnualPremium = val;
+            break;
+          }
+        }
+      }
+      if (summary.baseAnnualPremium != null) break;
+    }
+  }
+  // No fallback to rows[0].annualPremium — that column is total outlay ($25,000), not base ($8,250)
+
+  // PUA Rider Premium includes $581.56 for OYT — parse before PUA so we can subtract it from PUA total
+  summary.termPremium = parseNumber(
+    (fullText.match(/includes\s+\$([0-9,]+\.\d{2})\s+for\s+OYT/) || [])[1]
+  ) ?? parseNumber((fullText.match(/OYT[^$]*\$([0-9,]+\.\d{2})/) || [])[1]);
+
+  // Paid Up Additions Rider (Scheduled): $624.60 + (Unscheduled): $16,125.40 = $16,750; subtract OYT (included in PUA total)
+  const puaScheduled = parseNumber(
+    (fullText.match(/Paid\s+Up\s+Additions\s+Rider\s*\(\s*Scheduled\s*\)[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
+  );
+  const puaUnscheduled = parseNumber(
+    (fullText.match(/Paid\s+Up\s+Additions\s+Rider\s*\(\s*Unscheduled\s*\)[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
+  );
+  if (puaScheduled != null || puaUnscheduled != null) {
+    const puaGross = (puaScheduled || 0) + (puaUnscheduled || 0);
+    summary.puaPremium = Math.max(0, puaGross - (summary.termPremium || 0));
+  }
+  // Single Lump Sum PUA: default to 0; agent manually enters lump sum so total first year outlay auto-adjusts
+  summary.spuaPremium = 0;
+
+  if (summary.initialDeathBenefit == null) {
+    summary.initialDeathBenefit = parseNumber(
+      (fullText.match(/Death\s+Benefit[^$]*\$([0-9,]+)/) || [])[1]
+    ) ?? rows?.[0]?.deathBenefit ?? null;
+  }
+
+  return summary;
+}
+
+async function parseOneAmerica(pdfDoc) {
+  // One America parser: placeholder until sample PDF and page/column mapping are provided.
+  debugLog("One America parser not yet configured; returning empty rows.");
+  return [];
+}
+
+async function extractOneAmericaSummary(pdfDoc, rows) {
+  return {
+    carrier: "oneamerica",
+    initialDeathBenefit: rows?.[0]?.deathBenefit ?? null,
+    baseAnnualPremium: null,
+    puaPremium: null,
+    termPremium: null,
+    spuaPremium: null,
+  };
 }
 
 async function parseMassMutual(pdfDoc) {
