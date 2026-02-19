@@ -641,16 +641,15 @@ function parseNumberTokens(line) {
 
 async function parseLafayette(pdfDoc) {
   debugLog('Starting Lafayette Life parsing...');
-  const startPage = parseNumber(lafayetteStart.value) || 11;
-  const endPage = parseNumber(lafayetteEnd.value) || 14;
-  debugLog(`Lafayette pages: ${startPage} to ${endPage}`);
+  const configStart = parseNumber(lafayetteStart.value);
+  const configEnd = parseNumber(lafayetteEnd.value);
+  const startPage = configStart > 0 ? configStart : 10;
+  const endPage = configEnd > 0 ? configEnd : Math.min(20, pdfDoc.numPages);
+  debugLog(`Lafayette table pages: ${startPage} to ${endPage}`);
 
-  const tablePages = [];
-  for (let page = startPage; page <= endPage; page += 1) {
-    tablePages.push(page);
-  }
   const rows = [];
-  for (const pageNumber of tablePages) {
+  const seenYears = new Set();
+  for (let pageNumber = startPage; pageNumber <= endPage; pageNumber += 1) {
     const lines = await extractLinesFromPage(pdfDoc, pageNumber);
     debugLog(`Processing ${lines.length} lines from page ${pageNumber}`);
 
@@ -670,12 +669,11 @@ async function parseLafayette(pdfDoc) {
         return;
       }
 
-      // CORRECT extraction logic based on Lafayette Life table structure
-      const ageIndex = 0;              // Column 1: Age
-      const yearIndex = 1;             // Column 2: Year
-      const annualPremiumIndex = 2;   // Column 3: Contract Premium
-      const cashValueIndex = 9;        // Column 10: Non-Guaranteed Cash Value
-      const deathBenefitIndex = 10;   // Column 11: Death Benefit
+      const ageIndex = 0;
+      const yearIndex = 1;
+      const annualPremiumIndex = 2;
+      const cashValueIndex = 9;
+      const deathBenefitIndex = 10;
 
       const year = parseNumber(tokens[yearIndex]);
       const age = parseNumber(tokens[ageIndex]);
@@ -683,31 +681,14 @@ async function parseLafayette(pdfDoc) {
       const deathBenefit = parseNumber(tokens[deathBenefitIndex]);
       const cashValue = parseNumber(tokens[cashValueIndex]);
 
-      debugLog(`  📊 COLUMN MAPPING:`);
-      debugLog(`     tokens[${ageIndex}] = "${tokens[ageIndex]}" → age = ${age}`);
-      debugLog(`     tokens[${yearIndex}] = "${tokens[yearIndex]}" → year = ${year}`);
-      debugLog(`     tokens[${annualPremiumIndex}] = "${tokens[annualPremiumIndex]}" → annualPremium = ${annualPremium}`);
-      debugLog(`     tokens[${cashValueIndex}] = "${tokens[cashValueIndex]}" → cashValue = ${cashValue}`);
-      debugLog(`     tokens[${deathBenefitIndex}] = "${tokens[deathBenefitIndex]}" → deathBenefit = ${deathBenefit}`);
+      if (!year || !age) return;
+      if (year < 1 || year > 100) return;
+      if (age < 18 || age > 120) return;
+      if (seenYears.has(year)) return;
+      seenYears.add(year);
 
-      // Validation: skip invalid rows (summary lines, etc.)
-      if (!year || !age) {
-        debugLog(`    ❌ Skipped: Missing year or age`);
-        return;
-      }
-      if (year < 1 || year > 100) {
-        debugLog(`    ❌ Skipped: Invalid year ${year} (must be 1-100)`);
-        return;
-      }
-      if (age < 18 || age > 120) {
-        debugLog(`    ❌ Skipped: Invalid age ${age} (must be 18-120)`);
-        return;
-      }
-
-      const row = { year, age, annualPremium, cashValue, deathBenefit };
-      debugLog(`    ✅ FINAL ROW:`, row);
-      debugLog(`\n`);
-      rows.push(row);
+      debugLog(`  📊 Row: year=${year}, age=${age}, premium=${annualPremium}, cv=${cashValue}, db=${deathBenefit}`);
+      rows.push({ year, age, annualPremium, cashValue, deathBenefit });
     });
   }
 
@@ -716,10 +697,43 @@ async function parseLafayette(pdfDoc) {
   return rows.sort((a, b) => a.year - b.year);
 }
 
+async function findLafayettePremiumInformationPage(pdfDoc) {
+  const maxPage = Math.min(30, pdfDoc.numPages);
+  for (let p = 1; p <= maxPage; p += 1) {
+    const lines = await extractLinesFromPage(pdfDoc, p);
+    const text = lines.join(" ").toLowerCase().replace(/\s+/g, " ");
+    if (
+      /premium\s+information/.test(text) ||
+      /required\s+premiums/.test(text) ||
+      /minimum\s+required\s+annual\s+premium/.test(text) ||
+      /base\s+policy/.test(text) ||
+      /total\s+minimum\s+required/.test(text) ||
+      /do\s+not\s+include\s+the\s+cost\s+of\s+additional\s+benefits/.test(text)
+    ) {
+      debugLog(`Lafayette: found Premium Information / Required Premiums section on page ${p}`);
+      return p;
+    }
+  }
+  return null;
+}
+
+function extractAmountsFromSection(sectionText) {
+  const amounts = [];
+  const re = /(\d{1,3}(?:,\d{3})*\.\d{2}|\d+\.\d{2})/g;
+  let m;
+  while ((m = re.exec(sectionText)) !== null) {
+    const n = parseNumber(m[1]);
+    if (n != null) amounts.push(n);
+  }
+  return amounts;
+}
+
 async function extractLafayetteSummary(pdfDoc, rows) {
-  const summaryPage = parseNumber(lafayetteSummary.value) || 16;
-  const lines = await extractLinesFromPage(pdfDoc, summaryPage);
-  const fullText = lines.join(" ");
+  let summaryPage = parseNumber(lafayetteSummary.value) || null;
+  if (!summaryPage || summaryPage < 1) {
+    const detected = await findLafayettePremiumInformationPage(pdfDoc);
+    summaryPage = detected || 16;
+  }
   const summary = {
     initialDeathBenefit: rows?.[0]?.deathBenefit ?? null,
     baseAnnualPremium: null,
@@ -728,18 +742,64 @@ async function extractLafayetteSummary(pdfDoc, rows) {
     spuaPremium: null,
   };
 
-  summary.baseAnnualPremium = parseNumber(
-    (fullText.match(/Base Policy.*?\$([0-9,]+\.\d{2})/) || [])[1]
+  const pagesToTry = [summaryPage, summaryPage - 1, summaryPage + 1, 14, 15, 16, 17].filter(
+    (p) => p >= 1 && p <= pdfDoc.numPages
   );
-  summary.puaPremium = parseNumber(
-    (fullText.match(/Level Premium PUA Rider.*?\$([0-9,]+\.\d{2})/) || [])[1]
-  );
-  summary.termPremium = parseNumber(
-    (fullText.match(/10 Year Term Rider.*?\$([0-9,]+\.\d{2})/) || [])[1]
-  );
-  summary.spuaPremium = parseNumber(
-    (fullText.match(/Single Premium PUA Rider.*?\$([0-9,]+\.\d{2})/) || [])[1]
-  );
+  let fullText = "";
+
+  for (const p of pagesToTry) {
+    const lines = await extractLinesFromPage(pdfDoc, p);
+    fullText = lines.join(" ").replace(/\s+/g, " ");
+    if (/Base\s+Policy/i.test(fullText)) {
+      debugLog(`Lafayette: using page ${p} for summary`);
+      break;
+    }
+  }
+
+  if (!/Base\s+Policy/i.test(fullText)) {
+    return summary;
+  }
+
+  // Base Policy section: from "Base Policy" to "Level Premium" or "7 Year" or "10 Year" or ~350 chars
+  const baseSection = fullText.match(/Base\s+Policy[\s\S]{0,350}?(?=Level\s+Premium|\d+\s+Year\s+Term|$)/i);
+  if (baseSection) {
+    const amounts = extractAmountsFromSection(baseSection[0]);
+    const premiums = amounts.filter((a) => a >= 100 && a <= 50000);
+    if (premiums.length > 0) {
+      summary.baseAnnualPremium = premiums[premiums.length - 1];
+    }
+  }
+
+  // Level Premium PUA Rider section
+  const puaSection = fullText.match(/Level\s+Premium\s+PUA\s+Rider[\s\S]{0,200}?(?=\d+\s+Year\s+Term|Single\s+Premium|Total\s+Minimum|$)/i);
+  if (puaSection) {
+    const amounts = extractAmountsFromSection(puaSection[0]);
+    const premiums = amounts.filter((a) => a >= 100 && a <= 100000);
+    if (premiums.length > 0) {
+      summary.puaPremium = Math.max(...premiums);
+    }
+  }
+
+  // 7 Year or 10 Year Term Rider section
+  const termSection = fullText.match(/\d+\s+Year\s+Term\s+Rider[\s\S]{0,150}?(?=Level\s+Premium|Single\s+Premium|Total\s+Minimum|Coverages\s+paid|$)/i);
+  if (termSection) {
+    const amounts = extractAmountsFromSection(termSection[0]);
+    const premiums = amounts.filter((a) => a >= 100 && a <= 50000);
+    if (premiums.length > 0) {
+      summary.termPremium = premiums[premiums.length - 1];
+    }
+  }
+
+  // Single Premium PUA Rider section
+  const spuaSection = fullText.match(/Single\s+Premium\s+PUA\s+Rider[\s\S]{0,150}?(?=Paid\s+after|Other\s+Riders|Riders\s+with|$)/i);
+  if (spuaSection) {
+    const amounts = extractAmountsFromSection(spuaSection[0]);
+    const large = amounts.filter((a) => a >= 1000 && a <= 500000);
+    if (large.length > 0) {
+      summary.spuaPremium = large[large.length - 1];
+    }
+  }
+
   return summary;
 }
 
@@ -1004,63 +1064,133 @@ async function parseMassMutual(pdfDoc) {
   console.log('Starting MassMutual parsing...');
   console.log(`PDF has ${pdfDoc.numPages} pages`);
   const rows = [];
+  const seenYears = new Set();
 
-  // Parse page 19 (Supplemental Values - active premium years)
-  // Column mapping based on user input:
-  // [0]=Year, [1]=Age, [2]=Annual Premium, [7]=Cash Value, [10]=Death Benefit
-  console.log('Parsing page 19 (active premium years)...');
-  const page19Data = await extractLinesFromPage(pdfDoc, 19);
-  page19Data.forEach((line, lineIndex) => {
-    if (!/^\d+\s+\d+/.test(line)) return;
-    const tokens = parseNumberTokens(line);
-    if (tokens.length < 11) return;
+  // Strategy: Auto-detect table pages by searching for "Tabular Values" header
+  // or fall back to "Illustration Summary" table
+  let tabularValuePages = [];
+  let illustrationSummaryPages = [];
 
-    const year = parseNumber(tokens[0]);
-    const age = parseNumber(tokens[1]);
-    const annualPremium = parseNumber(tokens[2]);
-    const cashValue = parseNumber(tokens[7]);
-    const deathBenefit = parseNumber(tokens[10]);
+  // Scan pages to find table locations
+  for (let p = 1; p <= pdfDoc.numPages; p++) {
+    const lines = await extractLinesFromPage(pdfDoc, p);
+    const pageText = lines.join(" ");
 
-    if (!year || !age || year > 100) return;
+    if (/tabular\s+values/i.test(pageText)) {
+      tabularValuePages.push(p);
+      console.log(`Found Tabular Values on page ${p}`);
+    }
+    if (/illustration\s+summary/i.test(pageText) && /year\s+age/i.test(pageText)) {
+      illustrationSummaryPages.push(p);
+      console.log(`Found Illustration Summary table on page ${p}`);
+    }
+  }
 
-    const row = { year, age, annualPremium, cashValue, deathBenefit };
-    console.log(`  Year ${year}: Premium=${annualPremium}, CV=${cashValue}, DB=${deathBenefit}`);
-    rows.push(row);
-  });
+  console.log(`Tabular Value pages: ${tabularValuePages.join(', ') || 'none'}`);
+  console.log(`Illustration Summary pages: ${illustrationSummaryPages.join(', ') || 'none'}`);
 
-  // Parse page 20 (Reduced Paid-Up - continuation with $0 premiums)
-  // Column mapping: [0]=Year, [1]=Age, Premium=0, [6]=Cash Value, [7]=Death Benefit
-  console.log('Parsing page 20 (reduced paid-up years)...');
-  const page20Data = await extractLinesFromPage(pdfDoc, 20);
-  page20Data.forEach((line, lineIndex) => {
-    if (!/^\d+\s+\d+/.test(line)) return;
-    const tokens = parseNumberTokens(line);
-    if (tokens.length < 8) return;
+  // Prefer Tabular Values pages (more detailed), fall back to Illustration Summary
+  let tablePagesToUse = tabularValuePages.length > 0 ? tabularValuePages : illustrationSummaryPages;
+  const useTabularFormat = tabularValuePages.length > 0;
 
-    const year = parseNumber(tokens[0]);
-    const age = parseNumber(tokens[1]);
-    // Use last two columns for cash value and death benefit
-    const cashValue = parseNumber(tokens[tokens.length - 2]);
-    const deathBenefit = parseNumber(tokens[tokens.length - 1]);
+  if (tablePagesToUse.length === 0) {
+    // Last resort: try pages in typical ranges
+    console.log('No table headers found, trying common page ranges...');
+    for (let p = 3; p <= Math.min(25, pdfDoc.numPages); p++) {
+      tablePagesToUse.push(p);
+    }
+  }
 
-    if (!year || !age || year > 100) return;
-    // Skip if we already have this year from page 19
-    if (rows.some(r => r.year === year)) return;
+  // Parse each table page
+  for (const pageNum of tablePagesToUse) {
+    const lines = await extractLinesFromPage(pdfDoc, pageNum);
+    console.log(`Parsing MassMutual page ${pageNum} (${lines.length} lines)...`);
 
-    const row = { year, age, annualPremium: 0, cashValue, deathBenefit };
-    console.log(`  Year ${year}: Premium=0, CV=${cashValue}, DB=${deathBenefit}`);
-    rows.push(row);
-  });
+    for (const line of lines) {
+      // Data rows start with Year (1-3 digits) followed by Age (2-3 digits)
+      if (!/^\d{1,3}\s+\d{2,3}/.test(line)) continue;
 
-  debugLog(`MassMutual parsing complete: ${rows.length} rows extracted`);
-  console.table(rows);
+      const tokens = parseNumberTokens(line);
+      if (tokens.length < 6) continue;
+
+      const year = parseNumber(tokens[0]);
+      const age = parseNumber(tokens[1]);
+
+      if (!year || !age) continue;
+      if (year < 1 || year > 121) continue;
+      if (age < 18 || age > 121) continue;
+      if (seenYears.has(year)) continue;
+
+      let annualPremium, cashValue, deathBenefit;
+
+      // Use page type to determine column layout, with token count as fallback
+      // Tabular Values formats:
+      //   - Without LISR: 10-11 columns, Total CV at [7], Total DB at [9]
+      //   - With LISR: 12 columns, Total CV at [8], Total DB at [11]
+      // Illustration Summary has 6-7 columns
+      const isTabularRow = useTabularFormat || tokens.length >= 10;
+
+      if (isTabularRow && tokens.length >= 12) {
+        // LISR Tabular Values format (12 columns):
+        // Index: 0=Year, 1=Age, 2=Prem Gtd, 3=Guar CV, 4=Guar DB, 5=Contract Prem, 6=Annual Div, 7=CV Guar?, 8=Total CV, 9=PUA, 10=Term, 11=Total DB
+        annualPremium = parseNumber(tokens[5]);  // Contract Premium
+        cashValue = parseNumber(tokens[8]);      // Total Cash Value (column 8)
+        deathBenefit = parseNumber(tokens[11]);  // Total Death Benefit (column 11)
+        console.log(`  Row ${year}: LISR format CV=${cashValue}, DB=${deathBenefit}`);
+      } else if (isTabularRow && tokens.length >= 8) {
+        // Standard Tabular Values format (10-11 columns):
+        // Year, Age, Contract Premium, Guar CV, Guar DB, Annual Div, CV of Additions, Total CV, PUA, Total DB, (Total Paid-Up)
+        annualPremium = parseNumber(tokens[2]);
+        cashValue = parseNumber(tokens[7]);      // Total Cash Value (column 7)
+        deathBenefit = tokens.length >= 10 ? parseNumber(tokens[9]) : parseNumber(tokens[tokens.length - 1]);
+        console.log(`  Row ${year}: Tabular format (${tokens.length} tokens) CV=${cashValue}, DB=${deathBenefit}`);
+      } else if (tokens.length >= 6) {
+        // Illustration Summary format (6-7 columns):
+        // Year, Age, Annual Net Outlay, Cumulative Net Outlay, Net Cash Value, (Net Annual CV Increase), Net Death Benefit
+        annualPremium = parseNumber(tokens[2]);
+        cashValue = parseNumber(tokens[4]);
+        deathBenefit = parseNumber(tokens[tokens.length - 1]); // Last column is death benefit
+        console.log(`  Row ${year}: Summary format (${tokens.length} tokens) CV=${cashValue}, DB=${deathBenefit}`);
+      } else {
+        continue;
+      }
+
+      // Validate: death benefit should be >= cash value and reasonably large
+      // Also check if cash value seems wrong (e.g., stuck at $1,000,000 which is the guaranteed DB)
+      if (deathBenefit && cashValue && deathBenefit < cashValue) {
+        // Columns might be swapped, try alternative
+        const altDeathBenefit = parseNumber(tokens[tokens.length - 1]);
+        if (altDeathBenefit > cashValue) {
+          deathBenefit = altDeathBenefit;
+        }
+      }
+
+      // Additional check: if cash value equals a round million and tokens suggest Tabular Values format,
+      // we may have read the wrong column. Try to fix it.
+      if (tokens.length >= 8 && cashValue === 1000000 && tokens[7]) {
+        const altCashValue = parseNumber(tokens[7]);
+        if (altCashValue && altCashValue !== 1000000) {
+          console.log(`  Correcting CV from ${cashValue} to ${altCashValue} (year ${year})`);
+          cashValue = altCashValue;
+        }
+      }
+
+      seenYears.add(year);
+      const row = { year, age, annualPremium, cashValue, deathBenefit };
+      debugLog(`  Year ${year}: Age=${age}, Premium=${annualPremium}, CV=${cashValue}, DB=${deathBenefit}`);
+      rows.push(row);
+    }
+  }
+
+  console.log(`MassMutual parsing complete: ${rows.length} rows extracted`);
+  if (rows.length > 0) {
+    console.table(rows.slice(0, 10)); // Show first 10 rows
+  }
   return rows.sort((a, b) => a.year - b.year);
 }
 
 async function extractMassMutualSummary(pdfDoc, rows) {
-  console.log("Extracting MassMutual summary from page 8...");
-  const page8Lines = await extractLinesFromPage(pdfDoc, 8);
-  const fullText = page8Lines.join(" ");
+  console.log("Extracting MassMutual summary...");
 
   const summary = {
     carrier: "massmutual",
@@ -1071,28 +1201,59 @@ async function extractMassMutualSummary(pdfDoc, rows) {
     termPremium: null,       // LISR
   };
 
-  // Base Premium $12,080.00
+  // Scan first 15 pages for summary information
+  let allText = "";
+  const pagesToScan = Math.min(15, pdfDoc.numPages);
+  for (let p = 1; p <= pagesToScan; p++) {
+    const lines = await extractLinesFromPage(pdfDoc, p);
+    allText += " " + lines.join(" ");
+  }
+
+  // Try multiple patterns for Base Premium
+  // Pattern 1: "Base Premium $X" (with ALIR riders)
+  // Pattern 2: "Total Initial Premium: $X" or "Total Initial Premium $X"
+  // Pattern 3: "Initial Annualized Premium: $X"
   summary.baseAnnualPremium = parseNumber(
-    (fullText.match(/Base Premium\s*\$([0-9,]+\.\d{2})/) || [])[1]
+    (allText.match(/Base Premium\s*\$([0-9,]+(?:\.\d{2})?)/) || [])[1]
   );
 
-  // ALIR Scheduled Purchase Payment $16,914.00 (this is their PUA)
+  // If no base premium found, try to get total initial premium
+  if (!summary.baseAnnualPremium) {
+    const totalPremiumMatch = allText.match(/Total Initial Premium[:\s]*\$([0-9,]+(?:\.\d{2})?)/i) ||
+                              allText.match(/Initial Annualized Premium[:\s]*\$([0-9,]+(?:\.\d{2})?)/i);
+    if (totalPremiumMatch) {
+      summary.baseAnnualPremium = parseNumber(totalPremiumMatch[1]);
+    }
+  }
+
+  // ALIR Scheduled Purchase Payment (PUA)
   summary.puaPremium = parseNumber(
-    (fullText.match(/ALIR[^$]*Scheduled[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
+    (allText.match(/ALIR[^$]*Scheduled[^$]*\$([0-9,]+(?:\.\d{2})?)/) || [])[1]
   );
 
-  // ALIR Unscheduled First Year Lump Sum $86,000.00 (single PUA)
+  // ALIR Unscheduled First Year Lump Sum (single PUA)
   summary.spuaPremium = parseNumber(
-    (fullText.match(/ALIR[^$]*Unscheduled[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
+    (allText.match(/ALIR[^$]*Unscheduled[^$]*\$([0-9,]+(?:\.\d{2})?)/) || [])[1]
   );
 
-  // LISR Premium First Year $10,006.37 (term blend rider)
+  // LISR Premium First Year (term blend rider)
   summary.termPremium = parseNumber(
-    (fullText.match(/LISR Premium[^$]*\$([0-9,]+\.\d{2})/) || [])[1]
+    (allText.match(/LISR Premium[^$]*\$([0-9,]+(?:\.\d{2})?)/) || [])[1]
   );
 
-  // Initial Death Benefit from first row
-  summary.initialDeathBenefit = rows?.[0]?.deathBenefit ?? null;
+  // Initial Death Benefit - try to extract from text if not in rows
+  if (!summary.initialDeathBenefit) {
+    const dbMatch = allText.match(/Initial Death Benefit[:\s]*\$([0-9,]+(?:\.\d{2})?)/i) ||
+                    allText.match(/Total Initial Death Benefit[:\s]*\$([0-9,]+(?:\.\d{2})?)/i);
+    if (dbMatch) {
+      summary.initialDeathBenefit = parseNumber(dbMatch[1]);
+    }
+  }
+
+  // Fallback: use first row annual premium if no summary premium found
+  if (!summary.baseAnnualPremium && rows?.[0]?.annualPremium) {
+    summary.baseAnnualPremium = rows[0].annualPremium;
+  }
 
   console.log("MassMutual summary extracted:", summary);
   return summary;
@@ -1433,6 +1594,10 @@ function renderChart() {
 async function exportComparisonPdf() {
   setStatus("Generating comparison PDF...");
 
+  // Log export settings
+  const summaryYearsOnly = document.getElementById("pdfSummaryYears")?.checked ?? false;
+  console.log(`PDF Export: summaryYearsOnly=${summaryYearsOnly}`);
+
   // Prepare PDF export container
   const container = document.getElementById("pdfExportContainer");
   container.style.left = "0";
@@ -1476,12 +1641,12 @@ async function exportComparisonPdf() {
   console.log("PDF content element:", pdfContent);
 
   const opt = {
-    margin: [0.4, 0.3, 0.5, 0.3], // top, left, bottom, right
+    margin: [0.3, 0.25, 0.4, 0.25], // top, left, bottom, right - tighter margins
     filename: `comparison-${Date.now()}.pdf`,
-    image: { type: "jpeg", quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, logging: false },
+    image: { type: "jpeg", quality: 0.92 },
+    html2canvas: { scale: 1.5, useCORS: true, logging: false }, // reduced scale
     jsPDF: { unit: "in", format: "letter", orientation: "landscape" },
-    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+    pagebreak: { mode: 'css' }, // simplified pagebreak mode
   };
 
   try {
@@ -1496,6 +1661,8 @@ async function exportComparisonPdf() {
     const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
     const pages = pdfDoc.getPages();
+    const comparisonPageCount = pages.length;
+    console.log(`Comparison PDF generated: ${comparisonPageCount} pages`);
     const totalPages = pages.length;
 
     // Add page numbers and branding to each page
@@ -1522,40 +1689,17 @@ async function exportComparisonPdf() {
       });
     });
 
-    const mergedPdf = pdfDoc;
-
-    // Append source PDFs if available
-    const sourcePdfCount = Object.keys(state.sourcePdfs).length;
-    for (let i = 0; i < 3; i++) {
-      if (state.sourcePdfs[i]) {
-        try {
-          // Use slice(0) to create a copy of the ArrayBuffer
-          // Use ignoreEncryption for carrier PDFs that are copy-protected
-          const sourcePdf = await PDFDocument.load(state.sourcePdfs[i].slice(0), {
-            ignoreEncryption: true,
-          });
-          const sourcePages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
-          sourcePages.forEach((page) => mergedPdf.addPage(page));
-        } catch (sourceError) {
-          console.warn(`Could not attach source PDF ${i}:`, sourceError);
-        }
-      }
-    }
-
-    const mergedPdfBytes = await mergedPdf.save();
-    const mergedBlob = new Blob([mergedPdfBytes], { type: "application/pdf" });
-    const url = URL.createObjectURL(mergedBlob);
+    // Save the comparison PDF (no source illustrations attached)
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = opt.filename;
     a.click();
     URL.revokeObjectURL(url);
 
-    if (sourcePdfCount > 0) {
-      setStatus(`PDF saved with ${sourcePdfCount} source illustration(s) attached.`);
-    } else {
-      setStatus("Comparison PDF saved.");
-    }
+    setStatus("Comparison PDF saved.");
   } catch (error) {
     console.error("PDF export error:", error);
     setStatus("Error: " + error.message);
@@ -1698,7 +1842,16 @@ function renderPdfTable() {
   state.options.forEach((option) => {
     option?.rows.forEach((row) => allYears.add(row.year));
   });
-  const years = Array.from(allYears).sort((a, b) => a - b);
+  let years = Array.from(allYears).sort((a, b) => a - b);
+
+  // If summary years only, filter to milestone years (1, 5, 10, 15, 20, 25, 30, etc.)
+  const summaryYearsOnly = document.getElementById("pdfSummaryYears")?.checked ?? false;
+  if (summaryYearsOnly) {
+    const milestones = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+    const maxYear = Math.max(...years);
+    // Always include the last year
+    years = years.filter(y => milestones.includes(y) || y === maxYear);
+  }
 
   // Build columns list based on toggles
   const columns = [
@@ -1713,15 +1866,23 @@ function renderPdfTable() {
   const optionColors = ["option-color-1", "option-color-2", "option-color-3"];
   const activeOptionCount = state.options.filter(opt => opt !== null).length;
 
+  // Determine first column header based on summary mode
+  const firstColHeader = summaryYearsOnly ? "Year" : "Age";
+  const firstColCount = summaryYearsOnly ? 2 : 1; // Year + Age columns in summary mode
+
   let html = "<table><thead>";
-  html += "<tr><th class=\"year-header\"></th>";
+  html += "<tr><th class=\"year-header\"" + (summaryYearsOnly ? " colspan=\"2\"" : "") + "></th>";
   state.options.forEach((option, idx) => {
     if (!option) return;
     const name = option.name || `Option ${idx + 1}`;
     html += `<th colspan="${columns.length}" class="${optionColors[idx]}">${name}</th>`;
   });
   html += "</tr>";
-  html += "<tr><th class=\"year-header\">Age</th>";
+  if (summaryYearsOnly) {
+    html += "<tr><th class=\"year-header\">Year</th><th class=\"year-header\">Age</th>";
+  } else {
+    html += "<tr><th class=\"year-header\">Age</th>";
+  }
   state.options.forEach((option, idx) => {
     if (!option) return;
     columns.forEach(col => {
@@ -1743,7 +1904,11 @@ function renderPdfTable() {
       }
     }
 
-    html += `<tr class="pdf-table-row" data-html2pdf-page-break-avoid><td class="year-cell">${age}</td>`;
+    if (summaryYearsOnly) {
+      html += `<tr class="pdf-table-row" data-html2pdf-page-break-avoid><td class="year-cell year-number">${year}</td><td class="year-cell">${age}</td>`;
+    } else {
+      html += `<tr class="pdf-table-row" data-html2pdf-page-break-avoid><td class="year-cell">${age}</td>`;
+    }
     state.options.forEach((option, optionIndex) => {
       if (!option) return;
       const row = option.rows.find((r) => r.year === year);

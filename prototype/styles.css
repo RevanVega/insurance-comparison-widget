@@ -59,6 +59,21 @@ body {
   font-weight: 500;
 }
 
+.header-actions .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: #e5e7eb;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.header-actions .checkbox-label input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
 .card {
   background: #151a23;
   margin: 20px 32px;
@@ -576,6 +591,29 @@ tbody td:first-child {
   text-align: center;
 }
 
+.pdf-summary-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #1e2530;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #374151;
+  color: #9ca3af;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pdf-summary-toggle:hover {
+  border-color: #1fc9e5;
+}
+
+.pdf-summary-toggle input[type="checkbox"] {
+  accent-color: #1fc9e5;
+  cursor: pointer;
+}
+
 .chart-disclaimer {
   background: rgba(31, 201, 229, 0.1);
   border: 1px solid rgba(31, 201, 229, 0.3);
@@ -739,12 +777,14 @@ button.secondary:hover {
 }
 
 .pdf-section-1 {
-  page-break-after: always;
+  /* Removed page-break-after to allow continuous flow */
 }
 
 .pdf-section-3 {
+  /* Force disclosures to start on a new page */
   page-break-before: always;
-  min-height: 6in;
+  break-before: page;
+  margin-top: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1044,6 +1084,14 @@ button.secondary:hover {
   text-align: center !important;
 }
 
+/* Year number column (summary mode) - visual distinction */
+.pdf-table-container .year-number {
+  background: #2a2a2a !important;
+  color: #1fc9e5 !important;
+  font-weight: 800;
+  border-right: 2px solid #444 !important;
+}
+
 /* Option color coding */
 .pdf-table-container th.option-color-1,
 .pdf-table-container td.option-color-1 {
@@ -1085,6 +1133,8 @@ button.secondary:hover {
 .pdf-disclaimer {
   max-width: 8in;
   padding: 20px;
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
 .pdf-disclaimer h2 {
